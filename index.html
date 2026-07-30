@@ -150,6 +150,32 @@
 <script>
 const $ = id => document.getElementById(id);
 
+// 複数のCORSプロキシを順に試し、どれか一つ成功すればHTMLを返す
+async function fetchHtmlViaProxies(url){
+  const proxies = [
+    (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+    (u) => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+    (u) => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
+  ];
+  let lastErr;
+  for(const buildUrl of proxies){
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      const res = await fetch(buildUrl(url), { signal: controller.signal });
+      clearTimeout(timeout);
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      if(!text || text.length < 200) throw new Error('empty response');
+      return text;
+    } catch(e){
+      console.warn('proxy failed:', buildUrl(url), e.message);
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('all proxies failed');
+}
+
 // ---------- ① 取得 ----------
 $('fetchBtn').addEventListener('click', async () => {
   const url = $('mercariUrl').value.trim();
@@ -164,10 +190,7 @@ $('fetchBtn').addEventListener('click', async () => {
   $('fetchBtn').disabled = true;
 
   try {
-    const proxied = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-    const res = await fetch(proxied);
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    const html = await res.text();
+    const html = await fetchHtmlViaProxies(url);
     const doc = new DOMParser().parseFromString(html, 'text/html');
 
     const getMeta = (prop) => {
@@ -488,13 +511,28 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight){
 }
 
 function loadImageViaProxy(url){
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-  });
+  // 画像専用プロキシ(weserv.nl)を優先。失敗したらallorigins、それも失敗したら元URLを試す
+  const strippedUrl = url.replace(/^https?:\/\//, '');
+  const candidates = [
+    'https://images.weserv.nl/?url=' + encodeURIComponent(strippedUrl),
+    'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+    url
+  ];
+
+  function tryLoad(i){
+    return new Promise((resolve, reject) => {
+      if(i >= candidates.length){ reject(new Error('all proxies failed')); return; }
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => {
+        console.warn('image proxy failed:', candidates[i]);
+        tryLoad(i+1).then(resolve).catch(reject);
+      };
+      img.src = candidates[i];
+    });
+  }
+  return tryLoad(0);
 }
 
 // ---------- PWA ----------
@@ -506,3 +544,4 @@ if('serviceWorker' in navigator){
 </script>
 </body>
 </html>
+
