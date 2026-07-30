@@ -442,6 +442,341 @@ function loadImageViaProxy(url){
   const candidates = [
     'https://images.weserv.nl/?url=' + encodeURIComponent(strippedUrl),
     'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+       <div class="row2">
+      <div>
+        <label>SIM状態</label>
+        <select id="fSim"><option value="フリー">フリー</option><option value="ロック有">ロック有</option></select>
+      </div>
+      <div>
+        <label>保証付き整備品</label>
+        <select id="fWarranty"><option value="無">無</option><option value="有">有</option></select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>③ グラフ・スイッチのプレビュー（自動計算）</h2>
+    <canvas id="chart" width="600" height="520"></canvas>
+    <div class="hint">価格は「機種×容量の自動相場」と出品価格の差額から5段階（格安〜割高）を判定します。メモリ容量・商品状態・バッテリーは入力内容から自動スコア化されます。</div>
+  </div>
+
+  <div class="card">
+    <h2>④ Xポスト用画像を生成</h2>
+    <button class="btn-primary" id="generateBtn">インフォグラフィック画像を作成</button>
+    <img id="outputImg" alt="生成された画像">
+    <button class="btn-secondary" id="downloadBtn" style="display:none;">画像をダウンロード</button>
+    <canvas id="outputCanvas" width="1200" height="980"></canvas>
+  </div>
+
+  <div class="footerNote">
+    このアプリはブラウザ内で完結し、サーバーに商品データを保存しません。<br>
+    相場データは2026年7月時点の参考値です。実際の相場は変動するため目安としてご利用ください。
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ========== 機種・容量マスタ ==========
+const MODELS = [
+  'iPhone SE(第2世代)','iPhone SE(第3世代)','iPhone 8','iPhone X',
+  'iPhone 11','iPhone 11 Pro','iPhone 11 Pro Max',
+  'iPhone 12 mini','iPhone 12','iPhone 12 Pro','iPhone 12 Pro Max',
+  'iPhone 13 mini','iPhone 13','iPhone 13 Pro','iPhone 13 Pro Max',
+  'iPhone 14','iPhone 14 Plus','iPhone 14 Pro','iPhone 14 Pro Max',
+  'iPhone 15','iPhone 15 Plus','iPhone 15 Pro','iPhone 15 Pro Max',
+  'iPhone 16','iPhone 16 Plus','iPhone 16 Pro','iPhone 16 Pro Max','iPhone 16e',
+  'iPhone 17','iPhone 17 Pro','iPhone 17 Pro Max','iPhone 17e','iPhone Air'
+];
+const STORAGES = ['16GB','32GB','64GB','128GB','256GB','512GB','1TB','2TB'];
+
+// ========== 中古平均相場テーブル(円) 2026年7月時点・ランクA(美品)基準 出典:musbi.net ==========
+const PRICE_TABLE = {
+ 'iPhone SE(第2世代)|64GB':14800,'iPhone SE(第2世代)|128GB':16800,'iPhone SE(第2世代)|256GB':18600,
+ 'iPhone SE(第3世代)|64GB':24000,'iPhone SE(第3世代)|128GB':32500,'iPhone SE(第3世代)|256GB':43200,
+ 'iPhone 8|64GB':10300,'iPhone 8|128GB':11000,'iPhone 8|256GB':12200,
+ 'iPhone X|64GB':15600,'iPhone X|256GB':19600,
+ 'iPhone 11|64GB':21000,'iPhone 11|128GB':25200,'iPhone 11|256GB':28900,
+ 'iPhone 11 Pro|64GB':24900,'iPhone 11 Pro|256GB':30100,'iPhone 11 Pro|512GB':39000,
+ 'iPhone 11 Pro Max|64GB':34150,'iPhone 11 Pro Max|256GB':38000,'iPhone 11 Pro Max|512GB':58800,
+ 'iPhone 12 mini|64GB':22700,'iPhone 12 mini|128GB':25900,'iPhone 12 mini|256GB':30600,
+ 'iPhone 12|64GB':28400,'iPhone 12|128GB':30800,'iPhone 12|256GB':37400,
+ 'iPhone 12 Pro|128GB':37900,'iPhone 12 Pro|256GB':41100,'iPhone 12 Pro|512GB':49300,
+ 'iPhone 12 Pro Max|128GB':50900,'iPhone 12 Pro Max|256GB':55200,'iPhone 12 Pro Max|512GB':60400,
+ 'iPhone 13 mini|128GB':38500,'iPhone 13 mini|256GB':47400,'iPhone 13 mini|512GB':64500,
+ 'iPhone 13|128GB':42800,'iPhone 13|256GB':48400,'iPhone 13|512GB':54500,
+ 'iPhone 13 Pro|128GB':50400,'iPhone 13 Pro|256GB':57200,'iPhone 13 Pro|512GB':63300,'iPhone 13 Pro|1TB':79700,
+ 'iPhone 13 Pro Max|128GB':63300,'iPhone 13 Pro Max|256GB':70400,'iPhone 13 Pro Max|512GB':74800,'iPhone 13 Pro Max|1TB':84300,
+ 'iPhone 14|128GB':56200,'iPhone 14|256GB':63600,'iPhone 14|512GB':69500,
+ 'iPhone 14 Plus|128GB':62600,'iPhone 14 Plus|256GB':69600,'iPhone 14 Plus|512GB':73000,
+ 'iPhone 14 Pro|128GB':70200,'iPhone 14 Pro|256GB':78800,'iPhone 14 Pro|512GB':89200,'iPhone 14 Pro|1TB':110500,
+ 'iPhone 14 Pro Max|128GB':93200,'iPhone 14 Pro Max|256GB':94300,'iPhone 14 Pro Max|512GB':111900,'iPhone 14 Pro Max|1TB':116000,
+ 'iPhone 15|128GB':76000,'iPhone 15|256GB':85700,'iPhone 15|512GB':105900,
+ 'iPhone 15 Plus|128GB':84900,'iPhone 15 Plus|256GB':91600,'iPhone 15 Plus|512GB':113500,
+ 'iPhone 15 Pro|128GB':93800,'iPhone 15 Pro|256GB':106000,'iPhone 15 Pro|512GB':121100,'iPhone 15 Pro|1TB':134300,
+ 'iPhone 15 Pro Max|256GB':120100,'iPhone 15 Pro Max|512GB':141300,'iPhone 15 Pro Max|1TB':142500,
+ 'iPhone 16|128GB':94900,'iPhone 16|256GB':112600,'iPhone 16|512GB':121600,
+ 'iPhone 16 Plus|128GB':105400,'iPhone 16 Plus|256GB':112000,'iPhone 16 Plus|512GB':118000,
+ 'iPhone 16 Pro|128GB':132600,'iPhone 16 Pro|256GB':143200,'iPhone 16 Pro|512GB':162800,'iPhone 16 Pro|1TB':187500,
+ 'iPhone 16 Pro Max|256GB':158600,'iPhone 16 Pro Max|512GB':180800,'iPhone 16 Pro Max|1TB':189800,
+ 'iPhone 16e|128GB':77900,'iPhone 16e|256GB':91400,'iPhone 16e|512GB':106000,
+ 'iPhone 17|256GB':118000,'iPhone 17|512GB':150000,
+ 'iPhone 17 Pro|256GB':170000,'iPhone 17 Pro|512GB':196800,'iPhone 17 Pro|1TB':249000,
+ 'iPhone 17 Pro Max|256GB':186600,'iPhone 17 Pro Max|512GB':245000,'iPhone 17 Pro Max|1TB':302000,
+ 'iPhone 17e|256GB':88800,
+ 'iPhone Air|256GB':127000,'iPhone Air|512GB':142000,'iPhone Air|1TB':158000,
+};
+
+function populateSelect(sel, items){
+  sel.innerHTML = items.map(v => `<option value="${v}">${v}</option>`).join('');
+}
+populateSelect($('fModel'), MODELS);
+populateSelect($('fStorage'), STORAGES);
+$('fModel').value = 'iPhone 13';
+$('fStorage').value = '128GB';
+
+function lookupAvgPrice(){
+  const key = $('fModel').value + '|' + $('fStorage').value;
+  return PRICE_TABLE[key] || null;
+}
+function getEffectiveAvgPrice(){
+  const override = parseFloat(String($('fAvgPriceOverride').value).replace(/[^\d.]/g,''));
+  if(!isNaN(override) && override > 0) return override;
+  return lookupAvgPrice();
+}
+function updateAvgPriceDisplay(){
+  const avg = lookupAvgPrice();
+  $('avgPriceDisplay').textContent = avg ? avg.toLocaleString() + '円' : 'データなし（手動入力してください）';
+  drawPreview();
+}
+$('fModel').addEventListener('change', updateAvgPriceDisplay);
+$('fStorage').addEventListener('change', updateAvgPriceDisplay);
+$('fAvgPriceOverride').addEventListener('input', drawPreview);
+
+// ========== スコア計算 ==========
+const PRICE_LABELS = ['割高','ちょい高','相場並み','ちょい安','割安','格安']; // index = score
+function computePriceScore(price, avgPrice){
+  const p = parseFloat(String(price).replace(/[^\d.]/g,''));
+  const a = avgPrice;
+  if(!p || !a) return null;
+  const diff = p - a;
+  if(diff <= -5001) return 5;
+  if(diff <= -3001) return 4;
+  if(diff <= -1001) return 3;
+  if(diff <= 1000) return 2;
+  if(diff <= 3000) return 1;
+  return 0;
+}
+function computeStorageScore(storage){
+  const m = String(storage).match(/(\d+)\s?(GB|TB)/i);
+  if(!m) return null;
+  let gb = parseInt(m[1]);
+  if(/TB/i.test(m[2])) gb *= 1024;
+  if(gb >= 512) return 5;
+  if(gb >= 256) return 4;
+  if(gb >= 128) return 3;
+  if(gb >= 64) return 2;
+  if(gb >= 32) return 1;
+  return 0;
+}
+function computeConditionScore(cond){
+  const map = {'新品、未使用':5,'未使用に近い':4,'目立った傷や汚れなし':3,'やや傷や汚れあり':2,'傷や汚れあり':1,'全体的に状態が悪い':0};
+  return (cond in map) ? map[cond] : null;
+}
+function computeBatteryScore(battery){
+  const b = parseFloat(battery);
+  if(isNaN(b)) return null;
+  if(b >= 100) return 5;
+  if(b >= 95) return 4;
+  if(b >= 90) return 3;
+  if(b >= 85) return 2;
+  if(b >= 80) return 1;
+  return 0;
+}
+const SCORE_COLORS = ['#ff6b81','#ff8f5e','#f5b942','#a8e05f','#4ade80','#22d3ac']; // 0..5
+
+function getBarData(){
+  const avg = getEffectiveAvgPrice();
+  const priceScore = computePriceScore($('fPrice').value, avg);
+  return [
+    { label:'価格', score:priceScore,
+      badge: priceScore===null ? '判定不可' : PRICE_LABELS[priceScore],
+      sub: avg ? `相場${avg.toLocaleString()}円 / 出品${$('fPrice').value ? Number(String($('fPrice').value).replace(/[^\d]/g,'')).toLocaleString()+'円' : '未入力'}` : '相場データなし' },
+    { label:'メモリ容量', score:computeStorageScore($('fStorage').value), sub:$('fStorage').value || '' },
+    { label:'商品の状態', score:computeConditionScore($('fCondition').value), sub:$('fCondition').value },
+    { label:'バッテリー', score:computeBatteryScore($('fBattery').value), sub:$('fBattery').value ? $('fBattery').value+'%' : '未入力' },
+  ];
+}
+
+// ========== 横棒グラフ描画 ==========
+function roundRectPath(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+function drawBarsOn(ctx, x, y, width, bars, opts={}){
+  const barH = opts.barH || 34, gap = opts.gap || 24;
+  bars.forEach((bar, i) => {
+    const rowY = y + i*(barH+gap);
+    ctx.font = opts.labelFont || 'bold 18px sans-serif';
+    ctx.fillStyle = '#cfd6e4';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(bar.label, x, rowY - 8);
+    if(bar.sub){
+      ctx.font = opts.subFont || '13px sans-serif';
+      ctx.fillStyle = '#8a93a3';
+      ctx.textAlign = 'right';
+      ctx.fillText(bar.sub, x+width, rowY - 8);
+      ctx.textAlign = 'left';
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    roundRectPath(ctx, x, rowY, width, barH, barH/2); ctx.fill();
+    const score = bar.score === null ? 0 : bar.score;
+    const ratio = Math.max(0.06, Math.min(1, score/5));
+    const color = SCORE_COLORS[score] || SCORE_COLORS[0];
+    ctx.fillStyle = color;
+    roundRectPath(ctx, x, rowY, Math.max(barH, width*ratio), barH, barH/2); ctx.fill();
+    ctx.font = 'bold ' + (opts.badgeFontSize||16) + 'px sans-serif';
+    ctx.fillStyle = '#08151c';
+    ctx.textBaseline = 'middle';
+    const badgeText = bar.badge || (bar.score===null ? '?' : bar.score+'/5');
+    ctx.fillText(badgeText, x + 16, rowY + barH/2 + 1);
+  });
+  return y + bars.length*(barH+gap);
+}
+function drawToggleOn(ctx, x, y, width, label, options, activeIndex, opts={}){
+  const trackH = opts.trackH || 44;
+  ctx.font = opts.labelFont || '18px sans-serif';
+  ctx.fillStyle = '#cfd6e4'; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  ctx.fillText(label, x, y - 10);
+  ctx.fillStyle = 'rgba(255,255,255,0.07)';
+  roundRectPath(ctx, x, y, width, trackH, trackH/2); ctx.fill();
+  const half = width/2;
+  const activeX = x + (activeIndex===0 ? 0 : half);
+  ctx.fillStyle = activeIndex===0 ? '#5ad1e6' : '#ff6b81';
+  roundRectPath(ctx, activeX, y, half, trackH, trackH/2); ctx.fill();
+  ctx.font = 'bold ' + (opts.optionFontSize||17) + 'px sans-serif';
+  ctx.textBaseline='middle';
+  options.forEach((opt,i) => {
+    const cx = x + half*i + half/2;
+    ctx.textAlign='center';
+    ctx.fillStyle = (i===activeIndex) ? '#08151c' : '#8a93a3';
+    ctx.fillText(opt, cx, y+trackH/2+1);
+  });
+  return y + trackH;
+}
+
+function drawPreview(){
+  const canvas = $('chart'); const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const bars = getBarData();
+  let curY = drawBarsOn(ctx, 20, 50, canvas.width-40, bars, {barH:38, gap:28, labelFont:'bold 17px sans-serif'});
+  curY += 30;
+  const simActive = $('fSim').value === 'フリー' ? 0 : 1;
+  drawToggleOn(ctx, 20, curY, (canvas.width-60)/2, 'SIM状態', ['フリー','ロック有'], simActive);
+  const warrantyActive = $('fWarranty').value === '有' ? 0 : 1;
+  drawToggleOn(ctx, canvas.width/2+20, curY, (canvas.width-60)/2, '保証付き整備品', ['有','無'], warrantyActive);
+}
+['fPrice','fCondition','fBattery','fSim','fWarranty'].forEach(id => {
+  $(id).addEventListener('input', drawPreview);
+  $(id).addEventListener('change', drawPreview);
+});
+updateAvgPriceDisplay();
+
+// ========== ① 取得 ==========
+async function fetchHtmlViaProxies(url){
+  const proxies = [
+    (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+    (u) => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+    (u) => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
+  ];
+  let lastErr;
+  for(const buildUrl of proxies){
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      const res = await fetch(buildUrl(url), { signal: controller.signal });
+      clearTimeout(timeout);
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      if(!text || text.length < 200) throw new Error('empty response');
+      return text;
+    } catch(e){ console.warn('proxy failed:', buildUrl(url), e.message); lastErr = e; }
+  }
+  throw lastErr || new Error('all proxies failed');
+}
+
+$('fetchBtn').addEventListener('click', async () => {
+  const url = $('mercariUrl').value.trim();
+  const statusEl = $('fetchStatus');
+  if(!url || !url.includes('mercari.com')){
+    statusEl.textContent = 'MercariのURLを入力してください'; statusEl.className = 'status err'; return;
+  }
+  statusEl.textContent = '取得中...'; statusEl.className = 'status loading';
+  $('fetchBtn').disabled = true;
+  try {
+    const html = await fetchHtmlViaProxies(url);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const getMeta = (prop) => {
+      const el = doc.querySelector(`meta[property="${prop}"]`) || doc.querySelector(`meta[name="${prop}"]`);
+      return el ? el.getAttribute('content') : '';
+    };
+    const title = getMeta('og:title') || doc.title || '';
+    const desc = getMeta('og:description') || '';
+    const image = getMeta('og:image') || '';
+    const fullText = title + ' ' + desc;
+
+    $('fTitle').value = title;
+    if(image){ $('imgPreview').src = image; $('imgPreview').style.display='block'; $('imgPreview').dataset.src = image; }
+
+    // 機種名をマスタと突き合わせて一致検出(長い候補から優先)
+    const sortedModels = [...MODELS].sort((a,b) => b.length - a.length);
+    const matchedModel = sortedModels.find(m => {
+      const norm = m.replace('iPhone ','iPhone\\s?').replace('(','\\(').replace(')','\\)');
+      return new RegExp(norm.replace(/\s+/g,'\\s?'), 'i').test(fullText);
+    });
+    if(matchedModel) $('fModel').value = matchedModel;
+
+    const storageMatch = fullText.match(/(\d{2,4})\s?GB/i) || fullText.match(/(\d)\s?TB/i);
+    if(storageMatch){
+      const val = storageMatch[0].toUpperCase().replace(/\s/g,'');
+      if(STORAGES.includes(val)) $('fStorage').value = val;
+    }
+
+    const colors = ['ミッドナイト','スターライト','ブルー','グリーン','ピンク','パープル','レッド','ホワイト','ブラック','シルバー','ゴールド','グラファイト','シエラブルー','アルパイングリーン','ディープパープル','イエロー','ウルトラマリン','チタニウム'];
+    const foundColor = colors.find(c => fullText.includes(c));
+    if(foundColor) $('fColor').value = foundColor;
+
+    if(/SIMフリー|simフリー/i.test(fullText)) $('fSim').value = 'フリー';
+    else if(/docomo|ドコモ|\bau\b|softbank|ソフトバンク|楽天モバイル/i.test(fullText)) $('fSim').value = 'ロック有';
+
+    const condMap = ['新品、未使用','未使用に近い','目立った傷や汚れなし','やや傷や汚れあり','傷や汚れあり','全体的に状態が悪い'];
+    const foundCond = condMap.find(c => fullText.includes(c));
+    if(foundCond) $('fCondition').value = foundCond;
+
+    const battMatch = fullText.match(/バッテリー[^\d]{0,6}(\d{2,3})\s?%/);
+    if(battMatch) $('fBattery').value = battMatch[1];
+
+    if(/整備済み|認定整備済み|保証付き/.test(fullText)) $('fWarranty').value = '有';
+
+    const priceMatch = fullText.match(/([\d,]{3,7})\s?円/);
+    if(priceMatch) $('fPrice').value = priceMatch[1].replace(/,/g,'');
+
+    statusEl.textContent = '取得完了。内容を確認してください（自動推測のため誤りがある場合があります）';
+    statusEl.className = 'status ok';
+    updateAvgPriceDisplay();
+  } catch(err){
+    statusEl.textContent = '取得に失敗しました。手動で②に入力してください（' + err.message + '）';
+    statusEl.className = 'status err';
+  } finally { $('fetchBtn').disabled = false; }
+});
+
+// ========== ④ 画像生成 ==========
+function loadImageViaProxy(url){
+  const strippedUrl = url.replace(/^https?:\/\//, '');
+  const candidates = [
+    'https://images.weserv.nl/?url=' + encodeURIComponent(strippedUrl),
+    'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
     url
   ];
   function tryLoad(i){
