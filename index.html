@@ -263,13 +263,22 @@ const SCORE_COLORS = ['#ff6b81','#ff8f5e','#f5b942','#a8e05f','#4ade80','#22d3ac
 function getBarData(){
   const avg = getEffectiveAvgPrice();
   const priceScore = computePriceScore($('fPrice').value, avg);
+
+  const batteryRaw = $('fBattery').value.trim();
+  let batteryBar;
+  if(!batteryRaw || batteryRaw === '情報：無'){
+    batteryBar = { label:'バッテリー', score:2.5, badge:'?', sub:'情報：無', color:'#8b93a5' };
+  } else {
+    batteryBar = { label:'バッテリー', score:computeBatteryScore(batteryRaw), sub:batteryRaw+'%' };
+  }
+
   return [
     { label:'価格', score:priceScore,
       badge: priceScore===null ? '判定不可' : PRICE_LABELS[priceScore],
       sub: avg ? `相場${avg.toLocaleString()}円 / 出品${$('fPrice').value ? Number(String($('fPrice').value).replace(/[^\d]/g,'')).toLocaleString()+'円' : '未入力'}` : '相場データなし' },
     { label:'メモリ容量', score:computeStorageScore($('fStorage').value), sub:$('fStorage').value || '' },
     { label:'商品の状態', score:computeConditionScore($('fCondition').value), sub:$('fCondition').value },
-    { label:'バッテリー', score:computeBatteryScore($('fBattery').value), sub:$('fBattery').value ? $('fBattery').value+'%' : '未入力' },
+    batteryBar,
   ];
 }
 
@@ -301,7 +310,7 @@ function drawBarsOn(ctx, x, y, width, bars, opts={}){
     roundRectPath(ctx, x, rowY, width, barH, barH/2); ctx.fill();
     const score = bar.score === null ? 0 : bar.score;
     const ratio = Math.max(0.06, Math.min(1, score/5));
-    const color = SCORE_COLORS[score] || SCORE_COLORS[0];
+    const color = bar.color || SCORE_COLORS[Math.round(score)] || SCORE_COLORS[0];
     ctx.fillStyle = color;
     roundRectPath(ctx, x, rowY, Math.max(barH, width*ratio), barH, barH/2); ctx.fill();
     ctx.font = 'bold ' + (opts.badgeFontSize||16) + 'px sans-serif';
@@ -397,7 +406,8 @@ $('fetchBtn').addEventListener('click', async () => {
     const title = getMeta('og:title') || doc.title || '';
     const desc = getMeta('og:description') || '';
     const image = getMeta('og:image') || '';
-    const fullText = title + ' ' + desc;
+    const bodyText = doc.body ? doc.body.textContent.replace(/\s+/g,' ') : '';
+    const fullText = title + ' ' + desc + ' ' + bodyText;
 
     $('fTitle').value = title;
     if(image){ $('imgPreview').src = image; $('imgPreview').style.display='block'; $('imgPreview').dataset.src = image; }
@@ -428,12 +438,17 @@ $('fetchBtn').addEventListener('click', async () => {
     if(foundCond) $('fCondition').value = foundCond;
 
     const battMatch = fullText.match(/バッテリー[^\d]{0,6}(\d{2,3})\s?%/);
-    if(battMatch) $('fBattery').value = battMatch[1];
+    $('fBattery').value = battMatch ? battMatch[1] : '情報：無';
 
     if(/整備済み|認定整備済み|保証付き/.test(fullText)) $('fWarranty').value = '有';
 
-    const priceMatch = fullText.match(/[¥￥]\s?([\d,]{3,7})/) || fullText.match(/([\d,]{3,7})\s?円/);
-    if(priceMatch) $('fPrice').value = priceMatch[1].replace(/,/g,'');
+    const priceMeta = getMeta('product:price:amount');
+    if(priceMeta){
+      $('fPrice').value = priceMeta.replace(/[^\d]/g,'');
+    } else {
+      const priceMatch = fullText.match(/[¥￥]\s?([\d,]{3,7})/) || fullText.match(/([\d,]{3,7})\s?円/);
+      if(priceMatch) $('fPrice').value = priceMatch[1].replace(/,/g,'');
+    }
 
     statusEl.textContent = '取得完了。内容を確認してください（自動推測のため誤りがある場合があります）';
     statusEl.className = 'status ok';
