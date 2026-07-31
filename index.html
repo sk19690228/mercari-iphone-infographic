@@ -1,15 +1,15 @@
-  <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>iPhone出品インフォグラフィック作成</title>
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0b0d12">
+<meta name="theme-color" content="#f4f5f8">
 <style>
   :root{
-    --bg:#0b0d12; --panel:#151822; --panel2:#1c202c; --accent:#5ad1e6;
-    --good:#4ade80; --bad:#ff6b81; --warn:#f5b942; --text:#f2f4f8; --sub:#8b93a5; --border:#252a38;
+    --bg:#f4f5f8; --panel:#ffffff; --panel2:#eef0f4; --accent:#0891a8;
+    --good:#16a34a; --bad:#dc2626; --warn:#d97706; --text:#1a1d24; --sub:#6b7280; --border:#dde1e8;
   }
   *{box-sizing:border-box;}
   body{
@@ -18,7 +18,7 @@
   }
   header{
     padding:22px 16px 14px; text-align:center;
-    background:linear-gradient(135deg,#161a26,#0b0d12);
+    background:linear-gradient(135deg,#ffffff,#e9ecf2);
     border-bottom:1px solid var(--border);
   }
   header h1{font-size:18px; margin:0 0 4px;}
@@ -38,16 +38,16 @@
   .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
   .row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;}
   button{border:none; border-radius:11px; padding:13px 16px; font-size:14px; font-weight:700; cursor:pointer;}
-  .btn-primary{background:var(--accent); color:#06202a; width:100%; margin-top:14px;}
+  .btn-primary{background:var(--accent); color:#ffffff; width:100%; margin-top:14px;}
   .btn-secondary{background:var(--panel2); color:var(--text); border:1px solid var(--border); width:100%; margin-top:8px;}
   .btn-primary:disabled{opacity:.5;}
   .hint{font-size:11px; color:var(--sub); margin-top:6px; line-height:1.6;}
   .status{font-size:12px; margin-top:8px; min-height:16px;}
-  .status.ok{color:#7ee787;} .status.err{color:var(--bad);} .status.loading{color:var(--sub);}
+  .status.ok{color:var(--good);} .status.err{color:var(--bad);} .status.loading{color:var(--sub);}
   #imgPreview{max-width:100%; border-radius:10px; margin-top:8px; display:none; border:1px solid var(--border);}
   .avgBox{display:flex; align-items:center; justify-content:space-between; background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:10px 14px; margin-top:10px; font-size:13px;}
   .avgBox b{color:var(--accent); font-size:16px;}
-  canvas#chart{width:100%; height:auto; background:#10131c; border-radius:12px; display:block;}
+  canvas#chart{width:100%; height:auto; background:var(--panel2); border-radius:12px; display:block;}
   canvas#outputCanvas{display:none;}
   #outputImg{width:100%; border-radius:16px; margin-top:10px; border:1px solid var(--border); display:none;}
   .footerNote{font-size:11px; color:var(--sub); text-align:center; margin-top:18px; line-height:1.6;}
@@ -281,20 +281,23 @@ function roundRectPath(ctx,x,y,w,h,r){
 }
 function drawBarsOn(ctx, x, y, width, bars, opts={}){
   const barH = opts.barH || 34, gap = opts.gap || 24;
+  const labelColor = opts.labelColor || '#cfd6e4';
+  const subColor = opts.subColor || '#8a93a3';
+  const trackColor = opts.trackColor || 'rgba(255,255,255,0.07)';
   bars.forEach((bar, i) => {
     const rowY = y + i*(barH+gap);
     ctx.font = opts.labelFont || 'bold 18px sans-serif';
-    ctx.fillStyle = '#cfd6e4';
+    ctx.fillStyle = labelColor;
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.fillText(bar.label, x, rowY - 8);
     if(bar.sub){
       ctx.font = opts.subFont || '13px sans-serif';
-      ctx.fillStyle = '#8a93a3';
+      ctx.fillStyle = subColor;
       ctx.textAlign = 'right';
       ctx.fillText(bar.sub, x+width, rowY - 8);
       ctx.textAlign = 'left';
     }
-    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.fillStyle = trackColor;
     roundRectPath(ctx, x, rowY, width, barH, barH/2); ctx.fill();
     const score = bar.score === null ? 0 : bar.score;
     const ratio = Math.max(0.06, Math.min(1, score/5));
@@ -311,21 +314,24 @@ function drawBarsOn(ctx, x, y, width, bars, opts={}){
 }
 function drawToggleOn(ctx, x, y, width, label, options, activeIndex, opts={}){
   const trackH = opts.trackH || 44;
+  const labelColor = opts.labelColor || '#cfd6e4';
+  const subColor = opts.subColor || '#8a93a3';
+  const trackColor = opts.trackColor || 'rgba(255,255,255,0.07)';
   ctx.font = opts.labelFont || '18px sans-serif';
-  ctx.fillStyle = '#cfd6e4'; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  ctx.fillStyle = labelColor; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
   ctx.fillText(label, x, y - 10);
-  ctx.fillStyle = 'rgba(255,255,255,0.07)';
+  ctx.fillStyle = trackColor;
   roundRectPath(ctx, x, y, width, trackH, trackH/2); ctx.fill();
   const half = width/2;
   const activeX = x + (activeIndex===0 ? 0 : half);
-  ctx.fillStyle = activeIndex===0 ? '#5ad1e6' : '#ff6b81';
+  ctx.fillStyle = activeIndex===0 ? '#0891a8' : '#dc2626';
   roundRectPath(ctx, activeX, y, half, trackH, trackH/2); ctx.fill();
   ctx.font = 'bold ' + (opts.optionFontSize||17) + 'px sans-serif';
   ctx.textBaseline='middle';
   options.forEach((opt,i) => {
     const cx = x + half*i + half/2;
     ctx.textAlign='center';
-    ctx.fillStyle = (i===activeIndex) ? '#08151c' : '#8a93a3';
+    ctx.fillStyle = (i===activeIndex) ? '#ffffff' : subColor;
     ctx.fillText(opt, cx, y+trackH/2+1);
   });
   return y + trackH;
@@ -335,12 +341,13 @@ function drawPreview(){
   const canvas = $('chart'); const ctx = canvas.getContext('2d');
   ctx.clearRect(0,0,canvas.width,canvas.height);
   const bars = getBarData();
-  let curY = drawBarsOn(ctx, 20, 50, canvas.width-40, bars, {barH:38, gap:28, labelFont:'bold 17px sans-serif'});
+  const lightOpts = {labelColor:'#1a1d24', subColor:'#6b7280', trackColor:'rgba(0,0,0,0.08)'};
+  let curY = drawBarsOn(ctx, 20, 50, canvas.width-40, bars, {barH:38, gap:28, labelFont:'bold 17px sans-serif', ...lightOpts});
   curY += 30;
   const simActive = $('fSim').value === 'フリー' ? 0 : 1;
-  drawToggleOn(ctx, 20, curY, (canvas.width-60)/2, 'SIM状態', ['フリー','ロック有'], simActive);
+  drawToggleOn(ctx, 20, curY, (canvas.width-60)/2, 'SIM状態', ['フリー','ロック有'], simActive, lightOpts);
   const warrantyActive = $('fWarranty').value === '有' ? 0 : 1;
-  drawToggleOn(ctx, canvas.width/2+20, curY, (canvas.width-60)/2, '保証付き整備品', ['有','無'], warrantyActive);
+  drawToggleOn(ctx, canvas.width/2+20, curY, (canvas.width-60)/2, '保証付き整備品', ['有','無'], warrantyActive, lightOpts);
 }
 ['fPrice','fCondition','fBattery','fSim','fWarranty'].forEach(id => {
   $(id).addEventListener('input', drawPreview);
