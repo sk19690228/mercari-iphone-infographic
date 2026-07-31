@@ -391,8 +391,22 @@ $('fetchBtn').addEventListener('click', async () => {
     const title = getMeta('og:title') || doc.title || '';
     const desc = getMeta('og:description') || '';
     const image = getMeta('og:image') || '';
-    const bodyText = doc.body ? doc.body.textContent.replace(/\s+/g,' ') : '';
-    const fullText = title + ' ' + desc + ' ' + bodyText;
+
+    // 商品ページとして正しく取得できたか検証(トップページ/エラーページへのリダイレクトを検知)
+    const genericTitlePatterns = ['日本最大のフリマサービス', 'ログイン - メルカリ', 'メルカリ - Mercari'];
+    const isGenericPage = genericTitlePatterns.some(p => title.includes(p)) || !getMeta('og:title');
+    if(isGenericPage){
+      throw new Error('商品ページを取得できませんでした（売り切れ後の削除、または一時的なアクセス制限の可能性があります）');
+    }
+    const rawBodyText = doc.body ? doc.body.textContent.replace(/\s+/g,' ') : '';
+    // 関連商品・フッター・コメント欄などのノイズを避けるため「商品の説明」〜「出品者」の範囲だけに絞る
+    let mainSection = rawBodyText;
+    const startIdx = rawBodyText.indexOf('商品の説明');
+    const endIdx = rawBodyText.indexOf('出品者', startIdx > -1 ? startIdx : 0);
+    if(startIdx > -1 && endIdx > startIdx){
+      mainSection = rawBodyText.slice(startIdx, endIdx);
+    }
+    const fullText = title + ' ' + desc + ' ' + mainSection;
 
     $('fTitle').value = title;
     if(image){ $('imgPreview').src = image; $('imgPreview').style.display='block'; $('imgPreview').dataset.src = image; }
