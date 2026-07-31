@@ -107,20 +107,10 @@
     </select>
     <label>バッテリー最大容量(%) ※不明なら空欄可</label>
     <input type="text" id="fBattery" placeholder="例: 89">
-    <div class="row2">
-      <div>
-        <label>SIM状態</label>
-        <select id="fSim"><option value="フリー">フリー</option><option value="ロック有">ロック有</option></select>
-      </div>
-      <div>
-        <label>保証付き整備品</label>
-        <select id="fWarranty"><option value="無">無</option><option value="有">有</option></select>
-      </div>
-    </div>
   </div>
 
   <div class="card">
-    <h2>③ グラフ・スイッチのプレビュー（自動計算）</h2>
+    <h2>③ グラフのプレビュー（自動計算）</h2>
     <canvas id="chart" width="600" height="520"></canvas>
     <div class="hint">価格は「機種×容量の自動相場」と出品価格の差額から5段階（格安〜割高）を判定します。メモリ容量・商品状態・バッテリーは入力内容から自動スコア化されます。</div>
   </div>
@@ -130,7 +120,7 @@
     <button class="btn-primary" id="generateBtn">インフォグラフィック画像を作成</button>
     <img id="outputImg" alt="生成された画像">
     <button class="btn-secondary" id="downloadBtn" style="display:none;">画像をダウンロード</button>
-    <canvas id="outputCanvas" width="1200" height="980"></canvas>
+    <canvas id="outputCanvas" width="1200" height="800"></canvas>
   </div>
 
   <div class="footerNote">
@@ -351,14 +341,9 @@ function drawPreview(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   const bars = getBarData();
   const lightOpts = {labelColor:'#1a1d24', subColor:'#6b7280', trackColor:'rgba(0,0,0,0.08)'};
-  let curY = drawBarsOn(ctx, 20, 50, canvas.width-40, bars, {barH:38, gap:28, labelFont:'bold 17px sans-serif', ...lightOpts});
-  curY += 30;
-  const simActive = $('fSim').value === 'フリー' ? 0 : 1;
-  drawToggleOn(ctx, 20, curY, (canvas.width-60)/2, 'SIM状態', ['フリー','ロック有'], simActive, lightOpts);
-  const warrantyActive = $('fWarranty').value === '有' ? 0 : 1;
-  drawToggleOn(ctx, canvas.width/2+20, curY, (canvas.width-60)/2, '保証付き整備品', ['有','無'], warrantyActive, lightOpts);
+  drawBarsOn(ctx, 20, 50, canvas.width-40, bars, {barH:38, gap:28, labelFont:'bold 17px sans-serif', ...lightOpts});
 }
-['fPrice','fCondition','fBattery','fSim','fWarranty'].forEach(id => {
+['fPrice','fCondition','fBattery'].forEach(id => {
   $(id).addEventListener('input', drawPreview);
   $(id).addEventListener('change', drawPreview);
 });
@@ -430,17 +415,19 @@ $('fetchBtn').addEventListener('click', async () => {
     const foundColor = colors.find(c => fullText.includes(c));
     if(foundColor) $('fColor').value = foundColor;
 
-    if(/SIMフリー|simフリー/i.test(fullText)) $('fSim').value = 'フリー';
-    else if(/docomo|ドコモ|\bau\b|softbank|ソフトバンク|楽天モバイル/i.test(fullText)) $('fSim').value = 'ロック有';
-
     const condMap = ['新品、未使用','未使用に近い','目立った傷や汚れなし','やや傷や汚れあり','傷や汚れあり','全体的に状態が悪い'];
     const foundCond = condMap.find(c => fullText.includes(c));
     if(foundCond) $('fCondition').value = foundCond;
 
-    const battMatch = fullText.match(/バッテリー[^\d]{0,6}(\d{2,3})\s?%/);
+    // バッテリー抽出：「バッテリー」「最大容量」「バッテリー最大容量」など表記ゆれに対応
+    const battPatterns = [
+      /バッテリー\s*最大\s*容量[^\d%]{0,8}(\d{2,3})\s?%/,
+      /バッテリー[^\d%]{0,15}(\d{2,3})\s?%/,
+      /最大\s*容量[^\d%]{0,10}(\d{2,3})\s?%/,
+    ];
+    let battMatch = null;
+    for(const p of battPatterns){ battMatch = fullText.match(p); if(battMatch) break; }
     $('fBattery').value = battMatch ? battMatch[1] : '情報：無';
-
-    if(/整備済み|認定整備済み|保証付き/.test(fullText)) $('fWarranty').value = '有';
 
     const priceMeta = getMeta('product:price:amount');
     if(priceMeta){
@@ -543,13 +530,6 @@ $('generateBtn').addEventListener('click', async () => {
 
   const bars = getBarData();
   ry = drawBarsOn(ctx, rightX, ry+30, rightW, bars, {barH:42, gap:30, labelFont:'bold 22px sans-serif', subFont:'15px sans-serif', badgeFontSize:20});
-
-  const toggleY = imgBoxY + imgBoxH + 60;
-  const toggleW = (W - 100 - 40)/2;
-  const simActive = $('fSim').value === 'フリー' ? 0 : 1;
-  drawToggleOn(ctx, 50, toggleY, toggleW, 'SIM状態', ['フリー','ロック有'], simActive, {labelFont:'bold 24px sans-serif', trackH:56, optionFontSize:22});
-  const warrantyActive = $('fWarranty').value === '有' ? 0 : 1;
-  drawToggleOn(ctx, 50+toggleW+40, toggleY, toggleW, '保証付き整備品', ['有','無'], warrantyActive, {labelFont:'bold 24px sans-serif', trackH:56, optionFontSize:22});
 
   ctx.font = '20px sans-serif'; ctx.fillStyle = '#616a7a'; ctx.textAlign='left';
   ctx.fillText('※自己申告・自動推測・相場データ(2026年7月時点)を含みます。詳細は出品ページをご確認ください', 50, H-30);
