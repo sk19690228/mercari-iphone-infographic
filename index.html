@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+  <!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -358,13 +358,14 @@ async function fetchHtmlViaProxies(url){
   let lastErr;
   for(const buildUrl of proxies){
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 12000);
-      const res = await fetch(buildUrl(url), { signal: controller.signal });
-      clearTimeout(timeout);
-      if(!res.ok) throw new Error('HTTP ' + res.status);
-      const text = await res.text();
-      if(!text || text.length < 200) throw new Error('empty response');
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 12000));
+      const fetchPromise = fetch(buildUrl(url)).then(async (res) => {
+        if(!res.ok) throw new Error('HTTP ' + res.status);
+        const text = await res.text();
+        if(!text || text.length < 200) throw new Error('empty response');
+        return text;
+      });
+      const text = await Promise.race([fetchPromise, timeoutPromise]);
       return text;
     } catch(e){ console.warn('proxy failed:', buildUrl(url), e.message); lastErr = e; }
   }
@@ -424,7 +425,7 @@ $('fetchBtn').addEventListener('click', async () => {
 
     if(/整備済み|認定整備済み|保証付き/.test(fullText)) $('fWarranty').value = '有';
 
-    const priceMatch = fullText.match(/([\d,]{3,7})\s?円/);
+    const priceMatch = fullText.match(/[¥￥]\s?([\d,]{3,7})/) || fullText.match(/([\d,]{3,7})\s?円/);
     if(priceMatch) $('fPrice').value = priceMatch[1].replace(/,/g,'');
 
     statusEl.textContent = '取得完了。内容を確認してください（自動推測のため誤りがある場合があります）';
