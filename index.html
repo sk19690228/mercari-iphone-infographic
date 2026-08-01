@@ -262,10 +262,16 @@ function getBarData(){
     batteryBar = { label:'バッテリー', score:computeBatteryScore(batteryRaw), sub:batteryRaw+'%' };
   }
 
+  let priceBar;
+  if(priceScore === null){
+    priceBar = { label:'価格', score:2.5, badge:'?', sub: avg ? '出品価格 未入力' : '相場データなし', color:'#8b93a5' };
+  } else {
+    priceBar = { label:'価格', score:priceScore, badge:PRICE_LABELS[priceScore],
+      sub: `相場${avg.toLocaleString()}円 / 出品${Number(String($('fPrice').value).replace(/[^\d]/g,'')).toLocaleString()}円` };
+  }
+
   return [
-    { label:'価格', score:priceScore,
-      badge: priceScore===null ? '判定不可' : PRICE_LABELS[priceScore],
-      sub: avg ? `相場${avg.toLocaleString()}円 / 出品${$('fPrice').value ? Number(String($('fPrice').value).replace(/[^\d]/g,'')).toLocaleString()+'円' : '未入力'}` : '相場データなし' },
+    priceBar,
     { label:'メモリ容量', score:computeStorageScore($('fStorage').value), sub:$('fStorage').value || '' },
     { label:'商品の状態', score:computeConditionScore($('fCondition').value), sub:$('fCondition').value },
     batteryBar,
@@ -502,7 +508,7 @@ $('generateBtn').addEventListener('click', async () => {
   ctx.fillStyle = grad; ctx.fillRect(0,0,W,H);
 
   ctx.fillStyle = '#5ad1e6'; ctx.font = 'bold 34px sans-serif'; ctx.textAlign='left';
-  ctx.fillText('📱 中古iPhone 出品情報', 50, 60);
+  ctx.fillText('📱 オススメ優良iPhone フリマ情報', 50, 60);
 
   const leftX = 50, leftW = 520, rightX = 620, rightW = 530, topY = 110;
 
