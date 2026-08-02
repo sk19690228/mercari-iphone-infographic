@@ -76,8 +76,6 @@
     <input type="text" id="fTitle" placeholder="例: iPhone 13 128GB ブルー SIMフリー 美品">
     <label>出品価格（円）</label>
     <input type="text" id="fPrice" placeholder="例: 48000">
-    <label>出品日時</label>
-    <input type="text" id="fListingDate" placeholder="例: 3時間前 ／ 2026年7月30日">
 
     <div class="row2">
       <div>
@@ -124,7 +122,7 @@
     <button class="btn-secondary" id="regenPostBtn">テキストを再生成</button>
     <button class="btn-primary" id="copyPostBtn">コピー</button>
     <div class="status" id="copyPostStatus"></div>
-    <div class="hint">セールスポイント文は自動生成（30文字以内・絵文字込み）です。内容は自由に編集してからコピーできます。</div>
+    <div class="hint">セールスポイント文は商品説明から自動抽出した要約（50文字以内）です。内容は自由に編集してからコピーできます。</div>
   </div>
 
   <div class="card">
@@ -379,30 +377,25 @@ function drawPreview(){
 updateAvgPriceDisplay();
 
 // ========== ④ 投稿文生成・コピー ==========
+let productDescriptionText = ''; // ①取得時に商品説明の本文を保持
+
 function generateSalesPoint(){
-  const bars = getBarData();
-  const priceBar = bars[0], storageBar = bars[1], condBar = bars[2], battBar = bars[3];
-  const points = [];
-  if(priceBar.badge === '格安') points.push('🔥爆安チャンス');
-  else if(priceBar.badge === '割安') points.push('💰お買い得');
-  else if(priceBar.badge === 'ちょい安') points.push('✨相場より安い');
-  if($('fCondition').value === '新品、未使用') points.push('📦未使用品');
-  else if($('fCondition').value === '未使用に近い') points.push('✨美品級');
-  if(battBar.score !== null && battBar.badge !== '?' && battBar.score >= 4) points.push('🔋バッテリー良好');
-  if(storageBar.score !== null && storageBar.score >= 4) points.push('📱大容量');
-  if(points.length === 0) points.push('📱状態良好の一台');
-  let text = points.slice(0,2).join('・');
-  const chars = Array.from(text);
-  if(chars.length > 30) text = chars.slice(0,30).join('');
-  return text;
+  const text = (productDescriptionText || '').trim();
+  if(!text) return '状態良好の一台です。詳細は出品ページをご確認ください';
+  const firstSentenceMatch = text.match(/^(.+?[。！!])/);
+  let summary = firstSentenceMatch ? firstSentenceMatch[1] : text;
+  const chars = Array.from(summary);
+  if(chars.length > 50){
+    summary = chars.slice(0,49).join('') + '…';
+  }
+  return summary;
 }
 function buildPostText(){
   const title = $('fTitle').value || '(商品タイトル未設定)';
   const priceRaw = $('fPrice').value;
   const price = priceRaw ? Number(String(priceRaw).replace(/[^\d]/g,'')).toLocaleString()+'円' : '(価格未設定)';
-  const date = $('fListingDate').value || '(出品日時不明)';
   const sales = generateSalesPoint();
-  return `${title}\n${price}\n${date}\n${sales}`;
+  return `${title}\n${price}\n${sales}`;
 }
 function regeneratePostText(){ $('postText').value = buildPostText(); }
 $('regenPostBtn').addEventListener('click', regeneratePostText);
@@ -414,6 +407,7 @@ function buildAffiliateText(){
     + '状態・バッテリー・相場を毎回チェックしてから出品情報をシェアしています✅\n'
     + '掘り出し物が見つかったらぜひチェックしてみてください🔥✨';
   if(url) text += '\n👉 ' + url;
+  text += '\n#PR #メルカリアンバサダー';
   return text;
 }
 function regenerateAffiliateText(){ $('affiliateText').value = buildAffiliateText(); }
@@ -503,6 +497,17 @@ $('fetchBtn').addEventListener('click', async () => {
     }
     const fullText = title + ' ' + desc + ' ' + mainSection;
 
+    // セールスポイント要約用に、商品説明の自由記述部分だけをさらに絞り込む
+    let descriptionOnly = mainSection.replace(/^商品の説明/, '').trim();
+    const cutHeadings = ['商品の情報','配送料の負担','配送の方法','発送元の地域','発送までの日数','スマホ本体','ブランド','カテゴリー'];
+    let cutIdx = -1;
+    for(const h of cutHeadings){
+      const idx = descriptionOnly.indexOf(h);
+      if(idx > -1 && (cutIdx === -1 || idx < cutIdx)) cutIdx = idx;
+    }
+    if(cutIdx > -1) descriptionOnly = descriptionOnly.slice(0, cutIdx);
+    productDescriptionText = descriptionOnly.trim();
+
     $('fTitle').value = title;
     if(image){ $('imgPreview').src = image; $('imgPreview').style.display='block'; $('imgPreview').dataset.src = image; }
 
@@ -545,11 +550,6 @@ $('fetchBtn').addEventListener('click', async () => {
       const priceMatch = fullText.match(/[¥￥]\s?([\d,]{3,7})/) || fullText.match(/([\d,]{3,7})\s?円/);
       if(priceMatch) $('fPrice').value = priceMatch[1].replace(/,/g,'');
     }
-
-    // 出品日時抽出：相対表記(◯分前/◯時間前/◯日前など)または絶対日付
-    const dateMatch = fullText.match(/(\d+\s?(?:分|時間|日|週間|ヶ月)前)/)
-      || fullText.match(/(\d{4}年\d{1,2}月\d{1,2}日)/);
-    if(dateMatch) $('fListingDate').value = dateMatch[1];
 
     statusEl.textContent = '取得完了。内容を確認してください（自動推測のため誤りがある場合があります）';
     statusEl.className = 'status ok';
