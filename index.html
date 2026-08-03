@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>iPhone出品インフォグラフィック作成</title>
+<title>iPhone 16 お得商品自動選定</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f4f5f8">
 <style>
@@ -79,7 +79,7 @@
 <main>
   <div class="card">
     <h2>① iPhone 16シリーズを検索</h2>
-    <div class="hint">各ボタンからメルカリ検索を開き、候補の商品ページで「共有」→「iPhoneインフォ」を選択してください。販売中・SIMフリー・価格の安い順を基本条件にしています。</div>
+    <div class="hint">「自動検索・おすすめ決定」を押すと、iPhone 16シリーズ全16条件を順番に検索し、中古平均価格と比較して候補を自動収集します。共有・URLコピー・手入力は不要です。</div>
     <details class="settings">
       <summary>検索条件</summary>
       <div class="row2">
@@ -94,20 +94,20 @@
       <label><input type="checkbox" id="excludeRisk" checked> ジャンク・空箱・部品取り等をおすすめ対象から除外</label>
     </details>
     <div class="bulkControls">
-      <button class="btn-primary" id="bulkSearchBtn">16条件を一括検索</button>
+      <button class="btn-primary" id="bulkSearchBtn">自動検索・おすすめ決定</button>
       <button class="btn-secondary" id="stopBulkBtn" disabled>検索を停止</button>
     </div>
     <div class="status" id="bulkStatus"></div>
     <div class="progressBox" id="bulkProgress" style="display:none"></div>
-    <div class="searchGrid" id="mercariSearchGrid"></div>
-    <div class="status" id="shareStatus"></div>
+    <details class="settings"><summary>機種・容量別の検索リンクを表示</summary><div class="searchGrid" id="mercariSearchGrid"></div></details>
+    <div class="status" id="shareStatus" style="display:none"></div>
   </div>
 
   <div class="card">
-    <h2>② 共有した候補を比較</h2>
+    <h2>② 自動取得した候補を比較</h2>
     <div id="candidateList"></div>
     <button class="btn-secondary" id="clearCandidatesBtn">候補をすべて削除</button>
-    <div class="hint">価格差だけでなく、割引率・状態・バッテリー・説明情報の充実度を合わせて順位付けします。最終判断は必ず商品ページで確認してください。</div>
+    <div class="hint">価格差だけでなく、割引率・状態・バッテリー・説明情報の充実度を合わせて自動順位付けします。検索完了後、1位の商品が③へ自動反映されます。最終判断は商品ページで確認してください。</div>
   </div>
 
   <div class="card">
@@ -934,15 +934,29 @@ function extractSearchResultUrls(html, combo, maxUrls){
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const found = [];
   const seen = new Set();
+  const add = url => {
+    const normalized = normalizeProductUrl(url);
+    if(!normalized || seen.has(normalized)) return;
+    seen.add(normalized); found.push(normalized);
+  };
+
+  // 通常の検索結果カードを優先。カード内テキストで機種・容量を仮判定する。
   for(const a of doc.querySelectorAll('a[href*="/item/"]')){
-    const url = normalizeProductUrl(a.getAttribute('href') || a.href);
-    if(!url || seen.has(url)) continue;
+    const url = a.getAttribute('href') || a.href;
     const card = a.closest('li,article,[data-testid],section,div') || a;
     const text = (card.textContent || a.textContent || '').replace(/\s+/g,' ').trim();
-    if(!textMatchesCombo(text, combo)) continue;
+    if(text && !textMatchesCombo(text, combo)) continue;
     if(RISK_PATTERNS.some(w => text.includes(w))) continue;
-    if(/現在\s*[¥￥]?\s*[\d,]+/.test(text)) continue; // オークション表示を除外
-    seen.add(url); found.push(url);
+    if(/現在\s*[¥￥]?\s*[\d,]+/.test(text)) continue;
+    add(url);
+    if(found.length >= maxUrls) return found;
+  }
+
+  // Next.jsの埋め込みJSONなど、DOMにリンクが出ない場合のフォールバック。
+  const decoded = String(html).replace(/\u002F/g,'/').replace(/\\\//g,'/');
+  const matches = decoded.match(/(?:https:\/\/jp\.mercari\.com)?\/item\/m\d+/gi) || [];
+  for(const raw of matches){
+    add(raw.startsWith('http') ? raw : 'https://jp.mercari.com'+raw);
     if(found.length >= maxUrls) break;
   }
   return found;
@@ -1001,8 +1015,12 @@ async function runBulkSearch(){
     saveCandidates(); renderCandidates();
     status.textContent = bulkSearchStopRequested
       ? `停止しました。追加 ${added}件（検索成功 ${searchOk}条件）`
-      : `一括検索完了。追加 ${added}件／商品取得成功 ${detailOk}件／失敗 ${failed}件`;
+      : `自動検索完了。追加 ${added}件／商品取得成功 ${detailOk}件／失敗 ${failed}件`;
     status.className = bulkSearchStopRequested ? 'status err' : 'status ok';
+    if(!bulkSearchStopRequested && candidates.length){
+      const best = [...candidates].map(c=>({...c,_score:candidateScore(c)})).sort((a,b)=>b._score-a._score)[0];
+      if(best){ adoptCandidate(best.url); status.textContent += '。おすすめ1位を③へ反映しました'; }
+    }
   }finally{
     $('bulkSearchBtn').disabled = false;
     $('stopBulkBtn').disabled = true;
@@ -1011,7 +1029,7 @@ async function runBulkSearch(){
 
 function renderCandidates(){
   const list=$('candidateList');
-  if(!candidates.length){ list.innerHTML='<div class="emptyBox">候補はまだありません。<br>メルカリの商品ページからこのPWAへ共有してください。</div>'; return; }
+  if(!candidates.length){ list.innerHTML='<div class="emptyBox">候補はまだありません。<br>上の「自動検索・おすすめ決定」を押してください。</div>'; return; }
   const ranked=[...candidates].map(c=>({...c,_score:candidateScore(c)})).sort((a,b)=>b._score-a._score);
   list.innerHTML=ranked.map((c,i)=>{
     const risk=c.riskFlags.length ? `<span class="badge bad">注意: ${esc(c.riskFlags.join('・'))}</span>` : (i===0?'<span class="badge">今回のおすすめ</span>':'');
