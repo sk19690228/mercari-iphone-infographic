@@ -107,6 +107,16 @@
     </select>
     <label>バッテリー最大容量(%) ※不明なら空欄可</label>
     <input type="text" id="fBattery" placeholder="例: 89">
+    <label>Amazon整備済み品の最低価格（円）</label>
+    <input type="text" id="fAmazonPrice" placeholder="例: 52000">
+    <div class="avgBox">
+      <span id="amazonSearchLabel">検索キーワード: -</span>
+      <a id="amazonSearchLink" href="#" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600;text-decoration:none;">Amazonで検索 ↗</a>
+    </div>
+    <label>Amazon整備済み品の商品ページURL（任意・自動取得を試す場合）</label>
+    <input type="text" id="fAmazonUrl" placeholder="例: https://www.amazon.co.jp/dp/...">
+    <button class="btn-secondary" id="fetchAmazonBtn">Amazonページから価格を取得（試験的）</button>
+    <div class="status" id="fetchAmazonStatus"></div>
   </div>
 
   <div class="card">
@@ -117,20 +127,21 @@
 
   <div class="card">
     <h2>④ 投稿文をコピー</h2>
-    <label>タイトル・金額・出品日時・セールスポイントをまとめたテキスト</label>
+    <label>商品タイトル・メルカリ価格・Amazon整備済み品最低価格をまとめたテキスト</label>
     <textarea id="postText" rows="5" style="font-size:14px;"></textarea>
     <button class="btn-secondary" id="regenPostBtn">テキストを再生成</button>
     <button class="btn-primary" id="copyPostBtn">コピー</button>
     <div class="status" id="copyPostStatus"></div>
-    <div class="hint">セールスポイント文は商品説明から自動抽出した要約（50文字以内）です。内容は自由に編集してからコピーできます。</div>
   </div>
 
   <div class="card">
-    <h2>⑤ メルカリアフィリエイトPR文をコピー</h2>
-    <label>アフィリエイトURL（任意・入力すると文末に挿入されます）</label>
-    <input type="text" id="affiliateUrl" placeholder="例: https://af.mercari.com/...">
+    <h2>⑤ PR表記・アフィリエイトリンク</h2>
+    <label>メルカリアフィリエイトリンク</label>
+    <input type="text" id="mercariAffiliateUrl" placeholder="例: https://af.mercari.com/...">
+    <label>アマゾンアフィリエイトリンク</label>
+    <input type="text" id="amazonAffiliateUrl" placeholder="例: https://amzn.to/...">
     <label>PR文</label>
-    <textarea id="affiliateText" rows="5" style="font-size:14px;"></textarea>
+    <textarea id="affiliateText" rows="7" style="font-size:14px;"></textarea>
     <button class="btn-secondary" id="regenAffiliateBtn">テキストを再生成</button>
     <button class="btn-primary" id="copyAffiliateBtn">コピー</button>
     <div class="status" id="copyAffiliateStatus"></div>
@@ -142,6 +153,43 @@
     <img id="outputImg" alt="生成された画像">
     <button class="btn-secondary" id="downloadBtn" style="display:none;">画像をダウンロード</button>
     <canvas id="outputCanvas" width="1200" height="800"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>🔗 GitHub連携設定</h2>
+    <label>GitHubアクセストークン（Personal Access Token）</label>
+    <input type="password" id="githubToken" placeholder="ghp_... または github_pat_...">
+    <div class="hint">
+      ・トークンはファイルやこのブラウザには保存されません。タブを閉じると消えるので、保存のたびに入力してください。<br>
+      ・GitHubの Settings → Developer settings → Personal access tokens → Fine-grained tokens で発行できます。<br>
+      ・対象リポジトリだけに絞り、権限は「Contents: Read and write」のみで十分です。<br>
+      ・トークンが他人に知られると、そのリポジトリを誰でも書き換えられてしまいます。取り扱いに注意してください。
+    </div>
+    <div class="row2">
+      <div><label>リポジトリ所有者</label><input type="text" id="githubOwner" value="sk19690228"></div>
+      <div><label>リポジトリ名</label><input type="text" id="githubRepo" value="mercari-iphone-infographic"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>⚙️ Amazon整備済み品URL登録（iPhone 16シリーズ）</h2>
+    <div class="hint">
+      「GitHubに保存」を押すと、上のトークンを使ってこのリポジトリの <code>amazon-urls.json</code> を直接更新します。
+      トークンを使いたくない場合は「共有用JSONをコピー」→ GitHub側で手動貼り替えでも同じ結果になります。
+    </div>
+    <div id="amazonRegistryList"></div>
+    <button class="btn-secondary" id="copyRegistryJsonBtn">共有用JSONをコピー</button>
+    <button class="btn-primary" id="saveAmazonToGithubBtn">GitHubに保存</button>
+    <div class="status" id="copyRegistryStatus"></div>
+  </div>
+
+  <div class="card">
+    <h2>📊 中古平均価格一覧（iPhone 16シリーズ）</h2>
+    <div class="hint">アプリ内蔵の参考価格（2026年7月時点・ムスビー基準）を表示しています。実勢に合わせて上書きし、GitHubに保存すると全端末に反映されます。</div>
+    <div id="avgPriceRegistryList"></div>
+    <button class="btn-secondary" id="copyAvgPriceJsonBtn">共有用JSONをコピー</button>
+    <button class="btn-primary" id="saveAvgPriceToGithubBtn">GitHubに保存</button>
+    <div class="status" id="avgPriceStatus"></div>
   </div>
 
   <div class="footerNote">
@@ -376,47 +424,301 @@ function drawPreview(){
 });
 updateAvgPriceDisplay();
 
-// ========== ④ 投稿文生成・コピー ==========
-let productDescriptionText = ''; // ①取得時に商品説明の本文を保持
-
-function generateSalesPoint(){
-  const text = (productDescriptionText || '').trim();
-  if(!text) return '状態良好の一台です。詳細は出品ページをご確認ください';
-  const firstSentenceMatch = text.match(/^(.+?[。！!])/);
-  let summary = firstSentenceMatch ? firstSentenceMatch[1] : text;
-  const chars = Array.from(summary);
-  if(chars.length > 50){
-    summary = chars.slice(0,49).join('') + '…';
-  }
-  return summary;
+function updateAmazonSearchLink(){
+  const model = $('fModel').value, storage = $('fStorage').value, color = $('fColor').value;
+  const keyword = [model, storage, color, '整備済み'].filter(Boolean).join(' ');
+  $('amazonSearchLabel').textContent = '検索キーワード: ' + keyword;
+  $('amazonSearchLink').href = 'https://www.amazon.co.jp/s?k=' + encodeURIComponent(keyword);
 }
+['fModel','fStorage','fColor'].forEach(id => {
+  $(id).addEventListener('input', updateAmazonSearchLink);
+  $(id).addEventListener('change', updateAmazonSearchLink);
+});
+updateAmazonSearchLink();
+
+// ========== Amazon整備済み品ページから価格取得（試験的） ==========
+function extractAmazonPrice(html){
+  // 1. JSON-LD構造化データを試す
+  const ldMatches = html.match(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g) || [];
+  for(const block of ldMatches){
+    try {
+      const jsonText = block.replace(/<script[^>]*>/, '').replace(/<\/script>/, '');
+      const data = JSON.parse(jsonText);
+      const items = Array.isArray(data) ? data : [data];
+      for(const item of items){
+        const offers = item.offers || (item.offers === 0 ? item.offers : null);
+        if(offers){
+          const price = Array.isArray(offers) ? offers[0]?.price : offers.price;
+          if(price) return String(price).replace(/[^\d]/g,'');
+        }
+      }
+    } catch(e){ /* JSONパース失敗はスキップ */ }
+  }
+  // 2. Amazon内部データ(priceAmount等)を試す
+  let m = html.match(/"priceAmount"\s*:\s*"?([\d.]+)"?/);
+  if(m) return m[1].replace(/\..*$/,'');
+  // 3. 価格表示用クラス(a-price-whole)を試す
+  m = html.match(/a-price-whole[^>]*>\s*([\d,]+)/);
+  if(m) return m[1].replace(/,/g,'');
+  // 4. 汎用の¥表記(最初に見つかったもの)
+  m = html.match(/[¥￥]\s?([\d,]{3,7})/);
+  if(m) return m[1].replace(/,/g,'');
+  return null;
+}
+
+async function attemptFetchAmazonPrice(url){
+  const statusEl = $('fetchAmazonStatus');
+  if(!url || !url.includes('amazon.co.jp')){
+    statusEl.textContent = 'Amazon.co.jpの商品ページURLを入力してください';
+    statusEl.className = 'status err';
+    return false;
+  }
+  statusEl.textContent = '取得中...（Amazon側でブロックされ失敗することがあります）';
+  statusEl.className = 'status loading';
+  $('fetchAmazonBtn').disabled = true;
+  try {
+    const html = await fetchHtmlViaProxies(url);
+    const price = extractAmazonPrice(html);
+    if(price){
+      $('fAmazonPrice').value = price;
+      statusEl.textContent = '取得できました（金額は必ず実際のページと照合してください）';
+      statusEl.className = 'status ok';
+      regeneratePostText();
+      return true;
+    } else {
+      statusEl.textContent = '価格を検出できませんでした。お手数ですが手動で入力してください';
+      statusEl.className = 'status err';
+      return false;
+    }
+  } catch(err){
+    statusEl.textContent = '取得に失敗しました（Amazon側のアクセス制限の可能性）。手動で入力してください（' + err.message + '）';
+    statusEl.className = 'status err';
+    return false;
+  } finally {
+    $('fetchAmazonBtn').disabled = false;
+  }
+}
+$('fetchAmazonBtn').addEventListener('click', () => attemptFetchAmazonPrice($('fAmazonUrl').value.trim()));
+
+// ========== Amazon整備済み品URL登録（iPhone 16シリーズ） ==========
+const amazonRegistryCombos = Object.keys(PRICE_TABLE)
+  .filter(k => k.split('|')[0].startsWith('iPhone 16'))
+  .sort();
+
+function loadAmazonRegistryLocal(){
+  try { return JSON.parse(localStorage.getItem('amazonRenewedUrls') || '{}'); }
+  catch(e){ return {}; }
+}
+function saveAmazonRegistryLocal(reg){
+  try { localStorage.setItem('amazonRenewedUrls', JSON.stringify(reg)); }
+  catch(e){ /* 保存できない環境(プレビュー枠など)では無視 */ }
+}
+let amazonRegistry = loadAmazonRegistryLocal();
+
+function renderAmazonRegistryUI(){
+  const container = $('amazonRegistryList');
+  container.innerHTML = amazonRegistryCombos.map(combo => {
+    const [model, storage] = combo.split('|');
+    return `<label>${model}（${storage}）</label><input type="text" class="amazonRegistryInput" data-combo="${combo}" placeholder="Amazon商品ページURL">`;
+  }).join('');
+  container.querySelectorAll('.amazonRegistryInput').forEach(input => {
+    const combo = input.dataset.combo;
+    input.value = amazonRegistry[combo] || '';
+    input.addEventListener('change', () => {
+      amazonRegistry[combo] = input.value.trim();
+      saveAmazonRegistryLocal(amazonRegistry);
+    });
+  });
+}
+renderAmazonRegistryUI();
+
+// 同じ階層にamazon-urls.jsonがあれば、それを共有の正としてブラウザ保存より優先して読み込む
+(async function loadSharedAmazonRegistry(){
+  try {
+    const res = await fetch('./amazon-urls.json', { cache: 'no-store' });
+    if(res.ok){
+      const shared = await res.json();
+      if(shared && typeof shared === 'object'){
+        amazonRegistry = { ...amazonRegistry, ...shared };
+        saveAmazonRegistryLocal(amazonRegistry);
+        renderAmazonRegistryUI();
+      }
+    }
+  } catch(e){ /* 単体HTMLとして開いている場合などはファイルが無いので無視 */ }
+})();
+
+$('copyRegistryJsonBtn').addEventListener('click', () => {
+  const cleaned = {};
+  amazonRegistryCombos.forEach(combo => {
+    if(amazonRegistry[combo]) cleaned[combo] = amazonRegistry[combo];
+  });
+  const json = JSON.stringify(cleaned, null, 2);
+  copyTextToClipboard(json, 'copyRegistryStatus');
+});
+
+// ========== GitHubへの直接保存(共通処理) ==========
+async function saveJsonToGithub(path, dataObj, message){
+  const token = $('githubToken').value.trim();
+  const owner = $('githubOwner').value.trim() || 'sk19690228';
+  const repo = $('githubRepo').value.trim() || 'mercari-iphone-infographic';
+  if(!token){ throw new Error('GitHubアクセストークンを入力してください'); }
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+  const headers = {
+    'Authorization': 'Bearer ' + token,
+    'Accept': 'application/vnd.github+json'
+  };
+  let sha = null;
+  const getRes = await fetch(apiUrl, { headers });
+  if(getRes.ok){
+    const getData = await getRes.json();
+    sha = getData.sha;
+  } else if(getRes.status !== 404){
+    throw new Error('ファイル確認エラー: HTTP ' + getRes.status + '（トークンの権限を確認してください）');
+  }
+  const jsonText = JSON.stringify(dataObj, null, 2);
+  const content = btoa(unescape(encodeURIComponent(jsonText)));
+  const putBody = { message: message || ('update ' + path), content, branch: 'main' };
+  if(sha) putBody.sha = sha;
+  const putRes = await fetch(apiUrl, {
+    method: 'PUT',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(putBody)
+  });
+  if(!putRes.ok){
+    const errText = await putRes.text();
+    throw new Error('保存エラー: HTTP ' + putRes.status + ' ' + errText.slice(0,150));
+  }
+}
+
+$('saveAmazonToGithubBtn').addEventListener('click', async () => {
+  const statusEl = $('copyRegistryStatus');
+  statusEl.textContent = 'GitHubに保存中...';
+  statusEl.className = 'status loading';
+  try {
+    const cleaned = {};
+    amazonRegistryCombos.forEach(combo => { if(amazonRegistry[combo]) cleaned[combo] = amazonRegistry[combo]; });
+    await saveJsonToGithub('amazon-urls.json', cleaned, 'Update amazon-urls.json via app');
+    statusEl.textContent = 'GitHubに保存しました';
+    statusEl.className = 'status ok';
+  } catch(e){
+    statusEl.textContent = e.message;
+    statusEl.className = 'status err';
+  }
+});
+
+// ========== 中古平均価格一覧（iPhone 16シリーズ） ==========
+let avgPriceOverrides = {};
+
+function renderAvgPriceRegistryUI(){
+  const container = $('avgPriceRegistryList');
+  container.innerHTML = amazonRegistryCombos.map(combo => {
+    const [model, storage] = combo.split('|');
+    return `<label>${model}（${storage}）</label><input type="text" class="avgPriceRegistryInput" data-combo="${combo}" placeholder="円">`;
+  }).join('');
+  container.querySelectorAll('.avgPriceRegistryInput').forEach(input => {
+    const combo = input.dataset.combo;
+    input.value = avgPriceOverrides[combo] ?? PRICE_TABLE[combo] ?? '';
+    input.addEventListener('change', () => {
+      const v = input.value.replace(/[^\d]/g,'');
+      avgPriceOverrides[combo] = v;
+      if(v) PRICE_TABLE[combo] = Number(v);
+      updateAvgPriceDisplay();
+    });
+  });
+}
+renderAvgPriceRegistryUI();
+
+// 同じ階層にmercari-avg-prices.jsonがあれば、内蔵の参考価格より優先して読み込む
+(async function loadSharedAvgPrices(){
+  try {
+    const res = await fetch('./mercari-avg-prices.json', { cache: 'no-store' });
+    if(res.ok){
+      const shared = await res.json();
+      if(shared && typeof shared === 'object'){
+        avgPriceOverrides = { ...shared };
+        Object.keys(avgPriceOverrides).forEach(k => {
+          const v = Number(avgPriceOverrides[k]);
+          if(v) PRICE_TABLE[k] = v;
+        });
+        renderAvgPriceRegistryUI();
+        updateAvgPriceDisplay();
+      }
+    }
+  } catch(e){ /* ファイルが無ければ内蔵値のまま */ }
+})();
+
+$('copyAvgPriceJsonBtn').addEventListener('click', () => {
+  const cleaned = {};
+  amazonRegistryCombos.forEach(combo => {
+    const v = avgPriceOverrides[combo] ?? PRICE_TABLE[combo];
+    if(v) cleaned[combo] = Number(v);
+  });
+  copyTextToClipboard(JSON.stringify(cleaned, null, 2), 'avgPriceStatus');
+});
+
+$('saveAvgPriceToGithubBtn').addEventListener('click', async () => {
+  const statusEl = $('avgPriceStatus');
+  statusEl.textContent = 'GitHubに保存中...';
+  statusEl.className = 'status loading';
+  try {
+    const cleaned = {};
+    amazonRegistryCombos.forEach(combo => {
+      const v = avgPriceOverrides[combo] ?? PRICE_TABLE[combo];
+      if(v) cleaned[combo] = Number(v);
+    });
+    await saveJsonToGithub('mercari-avg-prices.json', cleaned, 'Update mercari-avg-prices.json via app');
+    statusEl.textContent = 'GitHubに保存しました';
+    statusEl.className = 'status ok';
+  } catch(e){
+    statusEl.textContent = e.message;
+    statusEl.className = 'status err';
+  }
+});
+
+async function autoFillAmazonFromRegistry(){
+  const combo = $('fModel').value + '|' + $('fStorage').value;
+  const url = amazonRegistry[combo];
+  if(url && url !== $('fAmazonUrl').value){
+    $('fAmazonUrl').value = url;
+    await attemptFetchAmazonPrice(url);
+  }
+}
+['fModel','fStorage'].forEach(id => {
+  $(id).addEventListener('change', autoFillAmazonFromRegistry);
+});
+
+// ========== ④ 投稿文生成・コピー ==========
 function buildPostText(){
   const title = $('fTitle').value || '(商品タイトル未設定)';
   const priceRaw = $('fPrice').value;
   const price = priceRaw ? Number(String(priceRaw).replace(/[^\d]/g,'')).toLocaleString()+'円' : '(価格未設定)';
-  const sales = generateSalesPoint();
-  return `${title}\n${price}\n${sales}`;
+  const amazonRaw = $('fAmazonPrice').value;
+  const amazonPrice = amazonRaw ? Number(String(amazonRaw).replace(/[^\d]/g,'')).toLocaleString()+'円' : '(Amazon価格未入力)';
+  return `${title}\n${price}\nAmazon整備済み品 最安値: ${amazonPrice}`;
 }
 function regeneratePostText(){ $('postText').value = buildPostText(); }
 $('regenPostBtn').addEventListener('click', regeneratePostText);
+$('fAmazonPrice').addEventListener('input', regeneratePostText);
 regeneratePostText();
 
+// ========== ⑤ PR表記・アフィリエイトリンク ==========
 function buildAffiliateText(){
-  const url = $('affiliateUrl').value.trim();
-  let text = '📱中古iPhoneを賢くお得にゲット🎉\n'
-    + '状態・バッテリー・相場を毎回チェックしてから出品情報をシェアしています✅\n'
-    + '掘り出し物が見つかったらぜひチェックしてみてください🔥✨';
-  if(url) text += '\n👉 ' + url;
-  text += '\n#PR #メルカリアンバサダー';
-  return text;
+  const mercariUrl = $('mercariAffiliateUrl').value.trim() || '(メルカリアフィリエイトリンク未入力)';
+  const amazonUrl = $('amazonAffiliateUrl').value.trim() || '(アマゾンアフィリエイトリンク未入力)';
+  return '📱✨オススメiPhone✨📱\n'
+    + `${mercariUrl}\n`
+    + '🏷️【PR】メルカリアンバサダー\n\n'
+    + '♻️🍎アマゾン整備済み品🍎♻️\n'
+    + `${amazonUrl}\n`
+    + '🏷️【PR】amazonアフィリエイト';
 }
 function regenerateAffiliateText(){ $('affiliateText').value = buildAffiliateText(); }
 $('regenAffiliateBtn').addEventListener('click', regenerateAffiliateText);
-$('affiliateUrl').addEventListener('input', regenerateAffiliateText);
+$('mercariAffiliateUrl').addEventListener('input', regenerateAffiliateText);
+$('amazonAffiliateUrl').addEventListener('input', regenerateAffiliateText);
 regenerateAffiliateText();
 
-async function copyTextFrom(textareaId, statusId){
-  const text = $(textareaId).value;
+async function copyTextToClipboard(text, statusId){
   const statusEl = $(statusId);
   try {
     if(navigator.clipboard && navigator.clipboard.writeText){
@@ -434,6 +736,9 @@ async function copyTextFrom(textareaId, statusId){
     statusEl.textContent = 'コピーに失敗しました。テキストを選択して手動でコピーしてください';
     statusEl.className = 'status err';
   }
+}
+function copyTextFrom(textareaId, statusId){
+  return copyTextToClipboard($(textareaId).value, statusId);
 }
 $('copyPostBtn').addEventListener('click', () => copyTextFrom('postText','copyPostStatus'));
 $('copyAffiliateBtn').addEventListener('click', () => copyTextFrom('affiliateText','copyAffiliateStatus'));
@@ -497,17 +802,6 @@ $('fetchBtn').addEventListener('click', async () => {
     }
     const fullText = title + ' ' + desc + ' ' + mainSection;
 
-    // セールスポイント要約用に、商品説明の自由記述部分だけをさらに絞り込む
-    let descriptionOnly = mainSection.replace(/^商品の説明/, '').trim();
-    const cutHeadings = ['商品の情報','配送料の負担','配送の方法','発送元の地域','発送までの日数','スマホ本体','ブランド','カテゴリー'];
-    let cutIdx = -1;
-    for(const h of cutHeadings){
-      const idx = descriptionOnly.indexOf(h);
-      if(idx > -1 && (cutIdx === -1 || idx < cutIdx)) cutIdx = idx;
-    }
-    if(cutIdx > -1) descriptionOnly = descriptionOnly.slice(0, cutIdx);
-    productDescriptionText = descriptionOnly.trim();
-
     $('fTitle').value = title;
     if(image){ $('imgPreview').src = image; $('imgPreview').style.display='block'; $('imgPreview').dataset.src = image; }
 
@@ -554,7 +848,9 @@ $('fetchBtn').addEventListener('click', async () => {
     statusEl.textContent = '取得完了。内容を確認してください（自動推測のため誤りがある場合があります）';
     statusEl.className = 'status ok';
     updateAvgPriceDisplay();
+    updateAmazonSearchLink();
     regeneratePostText();
+    autoFillAmazonFromRegistry();
   } catch(err){
     statusEl.textContent = '取得に失敗しました。手動で②に入力してください（' + err.message + '）';
     statusEl.className = 'status err';
@@ -654,7 +950,6 @@ $('generateBtn').addEventListener('click', async () => {
   const dlBtn = $('downloadBtn'); dlBtn.style.display = 'block';
   dlBtn.onclick = () => { const a=document.createElement('a'); a.href=dataUrl; a.download='iphone_infographic.png'; a.click(); };
 });
-
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); });
 }
