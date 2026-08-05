@@ -128,6 +128,8 @@
     <label>商品タイトル</label>
     <input type="text" id="fTitle" placeholder="例: iPhone 16 128GB ブルー SIMフリー 美品">
     <div class="hint" id="selectedProductLink"></div>
+    <label>メルカリアフィリエイトリンク</label>
+    <input type="text" id="mercariAffiliateUrl" placeholder="例: https://af.mercari.com/...">
     <img id="imgPreview" alt="商品画像プレビュー">
     <label>出品価格（円）</label>
     <input type="text" id="fPrice" placeholder="例: 48000">
@@ -168,10 +170,9 @@
       <span id="amazonSearchLabel">検索キーワード: -</span>
       <a id="amazonSearchLink" href="#" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600;text-decoration:none;">Amazonで検索 ↗</a>
     </div>
-    <label>Amazon整備済み品の商品ページURL（任意・自動取得を試す場合）</label>
-    <input type="text" id="fAmazonUrl" placeholder="例: https://www.amazon.co.jp/dp/...">
-    <button class="btn-secondary" id="fetchAmazonBtn">Amazonページから価格を取得（試験的）</button>
-    <div class="status" id="fetchAmazonStatus"></div>
+    <label>アマゾンアフィリエイトリンク</label>
+    <input type="text" id="amazonAffiliateUrl" placeholder="例: https://amzn.to/...">
+    <div class="hint">Amazon整備済み品の商品ページを確認し、アフィリエイトリンクを入力してください。</div>
   </div>
 
   <div class="card">
@@ -191,10 +192,7 @@
 
   <div class="card">
     <h2>⑥ PR表記・アフィリエイトリンク</h2>
-    <label>メルカリアフィリエイトリンク</label>
-    <input type="text" id="mercariAffiliateUrl" placeholder="例: https://af.mercari.com/...">
-    <label>アマゾンアフィリエイトリンク</label>
-    <input type="text" id="amazonAffiliateUrl" placeholder="例: https://amzn.to/...">
+    <div class="hint">③で入力したメルカリ／Amazonのアフィリエイトリンクを使用します。</div>
     <label>PR文</label>
     <textarea id="affiliateText" rows="7" style="font-size:14px;"></textarea>
     <button class="btn-secondary" id="regenAffiliateBtn">テキストを再生成</button>
@@ -499,70 +497,6 @@ function updateAmazonSearchLink(){
 });
 updateAmazonSearchLink();
 
-// ========== Amazon整備済み品ページから価格取得（試験的） ==========
-function extractAmazonPrice(html){
-  // 1. JSON-LD構造化データを試す
-  const ldMatches = html.match(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g) || [];
-  for(const block of ldMatches){
-    try {
-      const jsonText = block.replace(/<script[^>]*>/, '').replace(/<\/script>/, '');
-      const data = JSON.parse(jsonText);
-      const items = Array.isArray(data) ? data : [data];
-      for(const item of items){
-        const offers = item.offers || (item.offers === 0 ? item.offers : null);
-        if(offers){
-          const price = Array.isArray(offers) ? offers[0]?.price : offers.price;
-          if(price) return String(price).replace(/[^\d]/g,'');
-        }
-      }
-    } catch(e){ /* JSONパース失敗はスキップ */ }
-  }
-  // 2. Amazon内部データ(priceAmount等)を試す
-  let m = html.match(/"priceAmount"\s*:\s*"?([\d.]+)"?/);
-  if(m) return m[1].replace(/\..*$/,'');
-  // 3. 価格表示用クラス(a-price-whole)を試す
-  m = html.match(/a-price-whole[^>]*>\s*([\d,]+)/);
-  if(m) return m[1].replace(/,/g,'');
-  // 4. 汎用の¥表記(最初に見つかったもの)
-  m = html.match(/[¥￥]\s?([\d,]{3,7})/);
-  if(m) return m[1].replace(/,/g,'');
-  return null;
-}
-
-async function attemptFetchAmazonPrice(url){
-  const statusEl = $('fetchAmazonStatus');
-  if(!url || !url.includes('amazon.co.jp')){
-    statusEl.textContent = 'Amazon.co.jpの商品ページURLを入力してください';
-    statusEl.className = 'status err';
-    return false;
-  }
-  statusEl.textContent = '取得中...（Amazon側でブロックされ失敗することがあります）';
-  statusEl.className = 'status loading';
-  $('fetchAmazonBtn').disabled = true;
-  try {
-    const html = await fetchHtmlViaProxies(url);
-    const price = extractAmazonPrice(html);
-    if(price){
-      $('fAmazonPrice').value = price;
-      statusEl.textContent = '取得できました（金額は必ず実際のページと照合してください）';
-      statusEl.className = 'status ok';
-      regeneratePostText();
-      return true;
-    } else {
-      statusEl.textContent = '価格を検出できませんでした。お手数ですが手動で入力してください';
-      statusEl.className = 'status err';
-      return false;
-    }
-  } catch(err){
-    statusEl.textContent = '取得に失敗しました（Amazon側のアクセス制限の可能性）。手動で入力してください（' + err.message + '）';
-    statusEl.className = 'status err';
-    return false;
-  } finally {
-    $('fetchAmazonBtn').disabled = false;
-  }
-}
-$('fetchAmazonBtn').addEventListener('click', () => attemptFetchAmazonPrice($('fAmazonUrl').value.trim()));
-
 // ========== Amazon整備済み品URL登録（iPhone 16シリーズ） ==========
 const amazonRegistryCombos = Object.keys(PRICE_TABLE)
   .filter(k => k.split('|')[0].startsWith('iPhone 16'))
@@ -738,16 +672,16 @@ $('saveAvgPriceToGithubBtn').addEventListener('click', async () => {
   }
 });
 
-async function autoFillAmazonFromRegistry(){
+function suggestAmazonAffiliateFromRegistry(){
   const combo = $('fModel').value + '|' + $('fStorage').value;
   const url = amazonRegistry[combo];
-  if(url && url !== $('fAmazonUrl').value){
-    $('fAmazonUrl').value = url;
-    await attemptFetchAmazonPrice(url);
+  if(url && !$('amazonAffiliateUrl').value.trim()){
+    $('amazonAffiliateUrl').value = url;
+    regenerateAffiliateText();
   }
 }
 ['fModel','fStorage'].forEach(id => {
-  $(id).addEventListener('change', autoFillAmazonFromRegistry);
+  $(id).addEventListener('change', suggestAmazonAffiliateFromRegistry);
 });
 
 // ========== ④ 投稿文生成・コピー ==========
@@ -773,13 +707,20 @@ function buildAffiliateText(){
     + `${mercariUrl}\n`
     + '🏷️【PR】メルカリアンバサダー\n\n'
     + '♻️🍎アマゾン整備済み品🍎♻️\n'
+    + '🛡️✨安心の180日間の返品・交換保証付き✨🔁📦\n'
     + `${amazonUrl}\n`
     + '🏷️【PR】amazonアフィリエイト';
 }
 function regenerateAffiliateText(){ $('affiliateText').value = buildAffiliateText(); }
 $('regenAffiliateBtn').addEventListener('click', regenerateAffiliateText);
-$('mercariAffiliateUrl').addEventListener('input', regenerateAffiliateText);
-$('amazonAffiliateUrl').addEventListener('input', regenerateAffiliateText);
+function saveAffiliateLinks(){
+  localStorage.setItem('mercariAffiliateUrl', $('mercariAffiliateUrl').value.trim());
+  localStorage.setItem('amazonAffiliateUrl', $('amazonAffiliateUrl').value.trim());
+}
+$('mercariAffiliateUrl').value = localStorage.getItem('mercariAffiliateUrl') || '';
+$('amazonAffiliateUrl').value = localStorage.getItem('amazonAffiliateUrl') || '';
+$('mercariAffiliateUrl').addEventListener('input', () => { saveAffiliateLinks(); regenerateAffiliateText(); });
+$('amazonAffiliateUrl').addEventListener('input', () => { saveAffiliateLinks(); regenerateAffiliateText(); });
 regenerateAffiliateText();
 
 async function copyTextToClipboard(text, statusId){
@@ -837,6 +778,18 @@ function extractMercariUrl(value){
   return m ? m[0].replace(/[),。]+$/,'') : '';
 }
 
+function extractSmartphoneColor(text){
+  const source = String(text || '').replace(/\s+/g,' ');
+  const labeled = source.match(/スマートフォン\s*カラー\s*[:：]\s*([^|｜,、\n\r<>{}\[\]]{1,40})/i);
+  if(labeled){
+    return labeled[1]
+      .replace(/\s*(?:容量|SIMフリー|バッテリー|画面割れ|機能不良).*$/i,'')
+      .trim();
+  }
+  const colors = ['ミッドナイト','スターライト','ブルー','グリーン','ピンク','パープル','レッド','ホワイト','ブラック','シルバー','ゴールド','グラファイト','シエラブルー','アルパイングリーン','ディープパープル','イエロー','ウルトラマリン','ティール','デザートチタニウム','ナチュラルチタニウム','ブラックチタニウム','ホワイトチタニウム'];
+  return colors.find(c => source.includes(c)) || '';
+}
+
 function parseMercariHtml(html, url){
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const getMeta = (prop) => {
@@ -867,8 +820,7 @@ function parseMercariHtml(html, url){
     const n = storageMatch[1];
     storage = /TB/i.test(storageMatch[0]) ? n+'TB' : n+'GB';
   }
-  const colors = ['ミッドナイト','スターライト','ブルー','グリーン','ピンク','パープル','レッド','ホワイト','ブラック','シルバー','ゴールド','グラファイト','シエラブルー','アルパイングリーン','ディープパープル','イエロー','ウルトラマリン','チタニウム','デザートチタニウム','ナチュラルチタニウム','ブラックチタニウム','ホワイトチタニウム','ティール'];
-  const color = colors.find(c => fullText.includes(c)) || '';
+  const color = extractSmartphoneColor(rawBodyText) || extractSmartphoneColor(fullText);
   const condMap = ['新品、未使用','未使用に近い','目立った傷や汚れなし','やや傷や汚れあり','傷や汚れあり','全体的に状態が悪い'];
   const condition = condMap.find(c => fullText.includes(c)) || '';
   const battPatterns = [/バッテリー\s*最大\s*容量[^\d%]{0,8}(\d{2,3})\s?%/,/バッテリー[^\d%]{0,15}(\d{2,3})\s?%/,/最大\s*容量[^\d%]{0,10}(\d{2,3})\s?%/];
@@ -1001,7 +953,7 @@ function parseCandidateFromMail(raw){
   const simFree=triState(text,/SIM\s*フリー|シムフリー|SIM\s*ロック\s*(?:なし|解除済)/i,/SIM\s*ロック\s*(?:あり|未解除)/i);
   const shippingIncluded=triState(text,/送料込み|出品者負担/i,/着払い|購入者負担/i);
   const functionalIssue=/機能不良[^な]{0,8}(?:あり|有)|動作不良|故障|電源が入らない/i.test(text);
-  const color=['ブラック','ホワイト','ブルー','ピンク','グリーン','イエロー','ウルトラマリン','ティール','デザートチタニウム','ナチュラルチタニウム','ブラックチタニウム','ホワイトチタニウム'].find(c=>text.includes(c))||'';
+  const color=String(pick(raw,['color','smartphoneColor'],'')).trim() || extractSmartphoneColor(text);
   const avgPrice=PRICE_TABLE[model+'|'+storage]||null;
   const discountYen=avgPrice&&price?avgPrice-price:null;
   const discountRate=avgPrice&&price?discountYen/avgPrice*100:null;
@@ -1155,7 +1107,7 @@ function applyCandidate(c){
   if(c.condition) $('fCondition').value=c.condition;
   $('fBattery').value=c.battery===null?'情報：無':c.battery;
   if(c.image){$('imgPreview').src=c.image;$('imgPreview').dataset.src=c.image;$('imgPreview').style.display='block';}
-  updateAvgPriceDisplay(); updateAmazonSearchLink(); regeneratePostText(); autoFillAmazonFromRegistry();
+  updateAvgPriceDisplay(); updateAmazonSearchLink(); regeneratePostText(); suggestAmazonAffiliateFromRegistry(); regenerateAffiliateText();
   window.scrollTo({top:$('fTitle').getBoundingClientRect().top+window.scrollY-20,behavior:'smooth'});
 }
 
