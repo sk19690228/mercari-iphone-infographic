@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>iPhone 16 お得商品自動選定</title>
+<title>iPhone 16 新着メール比較</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f4f5f8">
 <style>
@@ -68,46 +68,58 @@
   details.settings{margin-top:10px;} details.settings summary{font-size:12px;font-weight:700;cursor:pointer;color:var(--accent);}
   .bulkControls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
   .progressBox{margin-top:10px;padding:10px;border-radius:10px;background:var(--panel2);font-size:11px;line-height:1.65;white-space:pre-wrap;max-height:220px;overflow:auto;}
+  .apiRequired{border-left:4px solid var(--warn);padding-left:10px;}
 </style>
 </head>
 <body>
 <header>
   <h1>📱 iPhone出品インフォグラフィック作成</h1>
-  <p>iPhone 16シリーズを検索・比較して、お得な1台の画像を作成</p>
+  <p>メルカリ新着通知メールから、お得な1台の画像を作成</p>
 </header>
 
 <main>
+
   <div class="card">
-    <h2>① iPhone 16シリーズを検索</h2>
-    <div class="hint">「自動検索・おすすめ決定」を押すと、iPhone 16シリーズ全16条件を順番に検索し、中古平均価格と比較して候補を自動収集します。共有・URLコピー・手入力は不要です。</div>
+    <h2>① Gmailのメルカリ新着通知を取得</h2>
+    <div class="hint">メルカリで保存した検索条件の新着通知メールを、ボタンを押した時だけGAS経由で確認します。定期トリガー、外部API、検索結果ページの自動巡回は使用しません。</div>
     <details class="settings">
-      <summary>検索条件</summary>
+      <summary>メール取得・選定条件</summary>
       <div class="row2">
-        <div><label>最低バッテリー</label><input type="number" id="searchMinBattery" value="85" min="0" max="100"></div>
-        <div><label>候補の最低割引率(%)</label><input type="number" id="searchMinDiscount" value="3" min="0" max="90"></div>
+        <div><label>メールを遡る日数</label><input type="number" id="mailSearchDays" value="14" min="1" max="30"></div>
+        <div><label>確認する最大スレッド数</label><input type="number" id="mailMaxThreads" value="50" min="1" max="100"></div>
       </div>
       <div class="row2">
-        <div><label>各条件の採用候補数</label><input type="number" id="bulkPerCombo" value="1" min="1" max="3"></div>
-        <div><label>取得間隔（秒）</label><input type="number" id="bulkDelaySec" value="1.5" min="1" max="10" step="0.5"></div>
+        <div><label>取得する最大商品数</label><input type="number" id="mailMaxItems" value="40" min="1" max="100"></div>
+        <div><label>最低バッテリー（記載時）</label><input type="number" id="searchMinBattery" value="80" min="0" max="100"></div>
       </div>
-      <label><input type="checkbox" id="searchSimFree" checked> 検索語に「SIMフリー」を含める</label>
-      <label><input type="checkbox" id="excludeRisk" checked> ジャンク・空箱・部品取り等をおすすめ対象から除外</label>
+      <label>おすすめ基準の最低割引率(%)</label>
+      <input type="number" id="searchMinDiscount" value="0" min="-50" max="90">
+      <label><input type="checkbox" id="trustSavedSearch" checked> メール元の保存検索条件を信頼し、メール・商品ページで確認できない項目は除外しない</label>
+      <label><input type="checkbox" id="searchSimFree" checked> SIMロックありと明記された商品を除外</label>
+      <label><input type="checkbox" id="excludeRisk" checked> ジャンク・空箱・部品取り等を除外</label>
+      <label><input type="checkbox" id="rejectUnknownBattery"> バッテリー最大容量が不明の商品も除外</label>
+      <label><input type="checkbox" id="requireShippingIncluded" checked> 着払い・購入者負担と明記された商品を除外</label>
+      <label><input type="checkbox" id="markProcessed" checked> 取得済みメールを「iPhoneインフォ/処理済み」ラベルで管理</label>
+      <label>GASウェブアプリURL</label>
+      <input type="url" id="mercariApiUrl" placeholder="https://script.google.com/macros/s/.../exec">
+      <label>中継用トークン</label>
+      <input type="text" id="mercariApiToken" placeholder="GASのAPP_TOKENと同じ値">
+      <button class="btn-secondary" id="testMercariApiBtn" type="button">Gmail接続をテスト</button>
+      <button class="btn-secondary" id="resetMailHistoryBtn" type="button">メール処理履歴をリセット</button>
+      <div class="status" id="mercariApiStatus"></div>
+      <div class="hint">GASは、このGoogleアカウントのGmailだけを確認します。Yahoo!メールで受信している場合は、メルカリ通知をGmailへ転送してください。設定値はこの端末内に保存されます。</div>
     </details>
-    <div class="bulkControls">
-      <button class="btn-primary" id="bulkSearchBtn">自動検索・おすすめ決定</button>
-      <button class="btn-secondary" id="stopBulkBtn" disabled>検索を停止</button>
-    </div>
+    <button class="btn-primary" id="bulkSearchBtn">新着通知メールを検索・おすすめ決定</button>
     <div class="status" id="bulkStatus"></div>
     <div class="progressBox" id="bulkProgress" style="display:none"></div>
-    <details class="settings"><summary>機種・容量別の検索リンクを表示</summary><div class="searchGrid" id="mercariSearchGrid"></div></details>
     <div class="status" id="shareStatus" style="display:none"></div>
   </div>
 
   <div class="card">
-    <h2>② 自動取得した候補を比較</h2>
+    <h2>② 通知メールから取得した候補を比較</h2>
     <div id="candidateList"></div>
     <button class="btn-secondary" id="clearCandidatesBtn">候補をすべて削除</button>
-    <div class="hint">価格差だけでなく、割引率・状態・バッテリー・説明情報の充実度を合わせて自動順位付けします。検索完了後、1位の商品が③へ自動反映されます。最終判断は商品ページで確認してください。</div>
+    <div class="hint">価格差だけでなく、割引率・状態・バッテリー・説明情報の充実度を合わせて自動順位付けします。メール取得完了後、1位の商品が③へ自動反映されます。最終判断は商品ページで確認してください。</div>
   </div>
 
   <div class="card">
@@ -237,7 +249,7 @@
 
   <div class="footerNote">
     このアプリはブラウザ内で完結し、サーバーに商品データを保存しません。<br>
-    相場データは2026年7月時点の参考値です。一括検索は公開プロキシ経由のため、取得失敗やページ構造変更の影響を受けます。
+    相場データは2026年7月時点の参考値です。新着取得は、ボタンを押した時だけGmailのメルカリ通知メールを確認します。
   </div>
 </main>
 
@@ -849,8 +861,12 @@ function parseMercariHtml(html, url){
     const norm = m.replace('iPhone ','iPhone\\s?').replace('(','\\(').replace(')','\\)');
     return new RegExp(norm.replace(/\s+/g,'\\s?'),'i').test(fullText);
   }) || '';
-  const storageMatch = fullText.match(/(\d{2,4})\s?GB/i) || fullText.match(/(\d)\s?TB/i);
-  const storage = storageMatch ? storageMatch[0].toUpperCase().replace(/\s/g,'') : '';
+  const storageMatch = fullText.match(/(16|32|64|128|256|512)\s*(?:GB|G|ギガ)/i) || fullText.match(/(1|2)\s*TB/i);
+  let storage = '';
+  if(storageMatch){
+    const n = storageMatch[1];
+    storage = /TB/i.test(storageMatch[0]) ? n+'TB' : n+'GB';
+  }
   const colors = ['ミッドナイト','スターライト','ブルー','グリーン','ピンク','パープル','レッド','ホワイト','ブラック','シルバー','ゴールド','グラファイト','シエラブルー','アルパイングリーン','ディープパープル','イエロー','ウルトラマリン','チタニウム','デザートチタニウム','ナチュラルチタニウム','ブラックチタニウム','ホワイトチタニウム','ティール'];
   const color = colors.find(c => fullText.includes(c)) || '';
   const condMap = ['新品、未使用','未使用に近い','目立った傷や汚れなし','やや傷や汚れあり','傷や汚れあり','全体的に状態が悪い'];
@@ -889,147 +905,231 @@ function saveCandidates(){ localStorage.setItem('mercariCandidatesV1', JSON.stri
 function yen(v){ return Number(v||0).toLocaleString()+'円'; }
 function esc(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-function renderSearchGrid(){
-  const sim = $('searchSimFree').checked ? ' SIMフリー' : '';
-  $('mercariSearchGrid').innerHTML = IPHONE16_COMBOS.map(combo => {
-    const [model,storage]=combo.split('|');
-    const href=buildMercariSearchUrl(combo);
-    return `<a class="searchLink" href="${href}" target="_blank" rel="noopener">${esc(model.replace('iPhone ',''))}<br>${esc(storage)} ↗</a>`;
-  }).join('');
+function detectModel(text){
+  const compact=String(text||'').replace(/[\s_-]+/g,'').toLowerCase();
+  return [...MODELS].sort((a,b)=>b.length-a.length).find(m=>compact.includes(m.replace(/[\s_-]+/g,'').toLowerCase()))||'';
 }
-
-let bulkSearchStopRequested = false;
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-function buildMercariSearchUrl(combo){
-  const [model,storage] = combo.split('|');
-  const sim = $('searchSimFree').checked ? ' SIMフリー' : '';
-  const keyword = `${model} ${storage}${sim}`;
-  return 'https://jp.mercari.com/search?keyword='+encodeURIComponent(keyword)+'&status=on_sale&sort=price&order=asc';
+function detectStorage(text){
+  const source=String(text||'');
+  const m=source.match(/(?:^|\D)(16|32|64|128|256|512)\s*(?:GB|G|ギガ)(?:\D|$)/i)
+    || source.match(/(?:^|\D)(1|2)\s*TB(?:\D|$)/i);
+  if(!m) return '';
+  return /TB/i.test(m[0]) ? m[1]+'TB' : m[1]+'GB';
 }
-
-function normalizeProductUrl(href){
-  try{
-    const u = new URL(href, 'https://jp.mercari.com');
-    const m = u.pathname.match(/^\/item\/(m\d+)/i);
-    return m ? `https://jp.mercari.com/item/${m[1]}` : '';
-  }catch(e){ return ''; }
-}
-
-function textMatchesCombo(text, combo){
-  const [model,storage] = combo.split('|');
-  const t = String(text||'').replace(/\s+/g,' ').toLowerCase();
-  const storageRe = storage === '1TB' ? /(?:1\s*tb|1000\s*gb)/i : new RegExp(storage.replace('GB','\\s*GB'), 'i');
-  if(!storageRe.test(t)) return false;
-  const compact = t.replace(/\s+/g,'');
-  const expected = model.toLowerCase().replace(/\s+/g,'');
-  if(!compact.includes(expected)) return false;
-  const longer = ['iphone16promax','iphone16pro','iphone16plus','iphone16e'];
-  if(expected === 'iphone16' && longer.some(x => compact.includes(x))) return false;
-  if(expected === 'iphone16pro' && compact.includes('iphone16promax')) return false;
-  return true;
-}
-
-function extractSearchResultUrls(html, combo, maxUrls){
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  const found = [];
-  const seen = new Set();
-  const add = url => {
-    const normalized = normalizeProductUrl(url);
-    if(!normalized || seen.has(normalized)) return;
-    seen.add(normalized); found.push(normalized);
+function getMercariApiSettings(){
+  return {
+    url:$('mercariApiUrl').value.trim().replace(/\/$/,''),
+    token:$('mercariApiToken').value.trim()
   };
+}
+function saveMercariApiSettings(){
+  const v=getMercariApiSettings();
+  localStorage.setItem('mercariApiUrl',v.url);
+  localStorage.setItem('mercariApiToken',v.token);
+  ['mailSearchDays','mailMaxThreads','mailMaxItems','searchMinBattery','searchMinDiscount'].forEach(id=>{
+    localStorage.setItem(id,$(id).value);
+  });
+  ['trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded','markProcessed'].forEach(id=>{
+    localStorage.setItem(id,$(id).checked?'1':'0');
+  });
+}
+$('mercariApiUrl').value=localStorage.getItem('mercariApiUrl')||'';
+$('mercariApiToken').value=localStorage.getItem('mercariApiToken')||'';
+['mailSearchDays','mailMaxThreads','mailMaxItems','searchMinBattery','searchMinDiscount'].forEach(id=>{
+  const saved=localStorage.getItem(id); if(saved!==null) $(id).value=saved;
+});
+['trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded','markProcessed'].forEach(id=>{
+  const saved=localStorage.getItem(id); if(saved!==null) $(id).checked=saved==='1';
+});
+['mercariApiUrl','mercariApiToken','mailSearchDays','mailMaxThreads','mailMaxItems','searchMinBattery','searchMinDiscount',
+ 'trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded','markProcessed']
+ .forEach(id=>$(id).addEventListener('change',saveMercariApiSettings));
 
-  // 通常の検索結果カードを優先。カード内テキストで機種・容量を仮判定する。
-  for(const a of doc.querySelectorAll('a[href*="/item/"]')){
-    const url = a.getAttribute('href') || a.href;
-    const card = a.closest('li,article,[data-testid],section,div') || a;
-    const text = (card.textContent || a.textContent || '').replace(/\s+/g,' ').trim();
-    if(text && !textMatchesCombo(text, combo)) continue;
-    if(RISK_PATTERNS.some(w => text.includes(w))) continue;
-    if(/現在\s*[¥￥]?\s*[\d,]+/.test(text)) continue;
-    add(url);
-    if(found.length >= maxUrls) return found;
-  }
-
-  // Next.jsの埋め込みJSONなど、DOMにリンクが出ない場合のフォールバック。
-  const decoded = String(html).replace(/\u002F/g,'/').replace(/\\\//g,'/');
-  const matches = decoded.match(/(?:https:\/\/jp\.mercari\.com)?\/item\/m\d+/gi) || [];
-  for(const raw of matches){
-    add(raw.startsWith('http') ? raw : 'https://jp.mercari.com'+raw);
-    if(found.length >= maxUrls) break;
-  }
-  return found;
+function callGmailRelay(action,params={}){
+  const cfg=getMercariApiSettings();
+  if(!cfg.url) return Promise.reject(new Error('GASウェブアプリURLを設定してください'));
+  return new Promise((resolve,reject)=>{
+    const callback='__gmailRelay_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    const qs=new URLSearchParams({action,token:cfg.token,callback,...params});
+    const script=document.createElement('script');
+    const cleanup=()=>{
+      clearTimeout(timer);
+      delete window[callback];
+      script.remove();
+    };
+    window[callback]=data=>{
+      cleanup();
+      if(!data || data.ok===false) reject(new Error(data?.error||'GASからエラーが返されました'));
+      else resolve(data);
+    };
+    script.onerror=()=>{cleanup();reject(new Error('GASへ接続できませんでした。デプロイURLと公開設定を確認してください'));};
+    const timer=setTimeout(()=>{cleanup();reject(new Error('GASがタイムアウトしました'));},90000);
+    script.src=cfg.url+'?'+qs.toString();
+    document.head.appendChild(script);
+  });
 }
 
-function candidateMatchesCombo(c, combo){
-  return `${c.model}|${c.storage}` === combo;
+function pick(obj,keys,fallback=''){
+  for(const k of keys){
+    if(obj && obj[k]!==undefined && obj[k]!==null && obj[k]!=='') return obj[k];
+  }
+  return fallback;
 }
+function triState(text,yesPattern,noPattern){
+  if(yesPattern.test(text)) return true;
+  if(noPattern.test(text)) return false;
+  return null;
+}
+function parseCandidateFromMail(raw){
+  const text=[
+    pick(raw,['title','name'],''),
+    pick(raw,['description','bodyText','context'],''),
+    pick(raw,['condition'],''),
+    pick(raw,['sourceSubject'],'')
+  ].join(' ').replace(/\s+/g,' ');
+  const title=String(pick(raw,['title','name'],pick(raw,['sourceSubject'],'商品タイトル不明'))).trim();
+  const url=String(pick(raw,['url','itemUrl'],''));
+  const image=String(pick(raw,['image','imageUrl'],''));
+  const price=Number(String(pick(raw,['price'],0)).replace(/[^\d]/g,''))||0;
+  const model=detectModel(text);
+  const storage=detectStorage(text);
+  const condMap=['新品、未使用','未使用に近い','目立った傷や汚れなし','やや傷や汚れあり','傷や汚れあり','全体的に状態が悪い'];
+  const condition=condMap.find(x=>text.includes(x)) || String(pick(raw,['condition'],''));
+  const bm=text.match(/(?:バッテリー(?:\s*最大)?\s*容量|最大\s*容量)[^\d%]{0,18}(\d{2,3})\s*%/i);
+  const battery=bm?Number(bm[1]):null;
+  const riskFlags=RISK_PATTERNS.filter(w=>text.includes(w));
+  const simFree=triState(text,/SIM\s*フリー|シムフリー|SIM\s*ロック\s*(?:なし|解除済)/i,/SIM\s*ロック\s*(?:あり|未解除)/i);
+  const shippingIncluded=triState(text,/送料込み|出品者負担/i,/着払い|購入者負担/i);
+  const functionalIssue=/機能不良[^な]{0,8}(?:あり|有)|動作不良|故障|電源が入らない/i.test(text);
+  const color=['ブラック','ホワイト','ブルー','ピンク','グリーン','イエロー','ウルトラマリン','ティール','デザートチタニウム','ナチュラルチタニウム','ブラックチタニウム','ホワイトチタニウム'].find(c=>text.includes(c))||'';
+  const avgPrice=PRICE_TABLE[model+'|'+storage]||null;
+  const discountYen=avgPrice&&price?avgPrice-price:null;
+  const discountRate=avgPrice&&price?discountYen/avgPrice*100:null;
+  return {
+    url,title,image,model,storage,color,condition,battery,price,avgPrice,discountYen,discountRate,
+    riskFlags,simFree,shippingIncluded,functionalIssue,
+    sourceSubject:String(pick(raw,['sourceSubject'],'')),
+    sourceDate:String(pick(raw,['sourceDate'],'')),
+    detailFetched:pick(raw,['detailFetched'],false)===true,
+    addedAt:Date.now()
+  };
+}
+function evaluateMailCandidate(c){
+  const reasons=[];
+  const trust=$('trustSavedSearch').checked;
+  if(!c.url) reasons.push('商品URLなし');
+  if(!c.model.startsWith('iPhone 16')) reasons.push('iPhone 16シリーズとして判定できず');
+  if(!c.storage) reasons.push('容量を判定できず');
+  if(!c.price) reasons.push('価格を取得できず');
+  if($('excludeRisk').checked&&c.riskFlags.length) reasons.push('注意語句: '+c.riskFlags.join('・'));
+  if(c.functionalIssue) reasons.push('機能不良の記載あり');
+  if($('searchSimFree').checked){
+    if(c.simFree===false) reasons.push('SIMロックあり');
+    if(c.simFree===null&&!trust) reasons.push('SIMフリーを確認できず');
+  }
+  if($('requireShippingIncluded').checked){
+    if(c.shippingIncluded===false) reasons.push('着払い・購入者負担');
+    if(c.shippingIncluded===null&&!trust) reasons.push('送料込みを確認できず');
+  }
+  const minBattery=Number($('searchMinBattery').value||80);
+  if(c.battery!==null&&c.battery<minBattery) reasons.push('バッテリー '+c.battery+'%');
+  if(c.battery===null&&$('rejectUnknownBattery').checked) reasons.push('バッテリー容量不明');
+  const allowed=['新品、未使用','未使用に近い','目立った傷や汚れなし','やや傷や汚れあり'];
+  if(c.condition&&!allowed.some(x=>c.condition.includes(x))) reasons.push('商品状態: '+c.condition);
+  if(!c.condition&&!trust) reasons.push('商品状態を確認できず');
+  return {accepted:reasons.length===0,reasons};
+}
+
+async function testMercariApi(){
+  const el=$('mercariApiStatus');
+  el.textContent='Gmail接続を確認中...'; el.className='status loading';
+  try{
+    const r=await callGmailRelay('health');
+    el.textContent='接続できました（'+(r.provider||'Gmail通知中継')+'）';
+    el.className='status ok';
+  }catch(e){
+    el.textContent='接続できません: '+e.message;
+    el.className='status err';
+  }
+}
+$('testMercariApiBtn').addEventListener('click',testMercariApi);
+
+async function resetMailHistory(){
+  if(!confirm('GASに保存された処理済みメール・商品IDの履歴をリセットしますか？')) return;
+  const el=$('mercariApiStatus');
+  el.textContent='履歴をリセット中...';el.className='status loading';
+  try{
+    const r=await callGmailRelay('resetProcessed');
+    el.textContent='処理履歴をリセットしました。次の検索で過去メールも再取得できます';
+    el.className='status ok';
+  }catch(e){
+    el.textContent='リセットできません: '+e.message;el.className='status err';
+  }
+}
+$('resetMailHistoryBtn').addEventListener('click',resetMailHistory);
 
 async function runBulkSearch(){
   if($('bulkSearchBtn').disabled) return;
-  bulkSearchStopRequested = false;
-  $('bulkSearchBtn').disabled = true;
-  $('stopBulkBtn').disabled = false;
-  const status = $('bulkStatus');
-  const progress = $('bulkProgress');
-  progress.style.display = 'block'; progress.textContent = '';
-  const perCombo = Math.max(1, Math.min(3, Number($('bulkPerCombo').value || 1)));
-  const delayMs = Math.max(1000, Number($('bulkDelaySec').value || 1.5) * 1000);
-  let searchOk=0, detailOk=0, added=0, failed=0;
-  const log = msg => { progress.textContent += msg+'\n'; progress.scrollTop = progress.scrollHeight; };
+  const cfg=getMercariApiSettings();
+  if(!cfg.url){
+    $('bulkStatus').textContent='先に「メール取得・選定条件」を開き、GASウェブアプリURLを設定してください';
+    $('bulkStatus').className='status err'; return;
+  }
+  saveMercariApiSettings();
+  $('bulkSearchBtn').disabled=true;
+  const status=$('bulkStatus'),progress=$('bulkProgress');
+  progress.style.display='block';progress.textContent='';
+  status.textContent='Gmailの未処理メルカリ通知を確認しています...';status.className='status loading';
+  const log=msg=>{progress.textContent+=msg+'\n';progress.scrollTop=progress.scrollHeight;};
   try{
-    for(let i=0;i<IPHONE16_COMBOS.length;i++){
-      if(bulkSearchStopRequested) break;
-      const combo = IPHONE16_COMBOS[i];
-      status.textContent = `${i+1}/${IPHONE16_COMBOS.length} ${combo} を検索中...`;
-      status.className = 'status loading';
-      log(`▶ ${combo}`);
-      try{
-        const searchHtml = await fetchHtmlViaProxies(buildMercariSearchUrl(combo));
-        searchOk++;
-        const urls = extractSearchResultUrls(searchHtml, combo, Math.max(perCombo*4, 6));
-        log(`  検索結果から ${urls.length}件を抽出`);
-        let accepted = 0;
-        for(const url of urls){
-          if(bulkSearchStopRequested || accepted >= perCombo) break;
-          await sleep(delayMs);
-          try{
-            const detailHtml = await fetchHtmlViaProxies(url);
-            const c = parseMercariHtml(detailHtml, url);
-            detailOk++;
-            if(!candidateMatchesCombo(c, combo)){ log(`  × 機種・容量不一致: ${c.model||'?'} ${c.storage||'?'}`); continue; }
-            if(c.riskFlags.length){ log(`  × 注意語句: ${c.riskFlags.join('・')}`); continue; }
-            const minBattery = Number($('searchMinBattery').value || 0);
-            if(c.battery !== null && c.battery < minBattery){ log(`  × バッテリー ${c.battery}%`); continue; }
-            candidates = candidates.filter(x => x.url !== url);
-            candidates.push(c); accepted++; added++;
-            log(`  ✓ ${yen(c.price)} / ${c.discountRate===null?'比較不能':c.discountRate.toFixed(1)+'%安'}`);
-          }catch(e){ failed++; log(`  ! 商品取得失敗: ${e.message}`); }
-        }
-        if(!accepted) log('  候補を採用できませんでした');
-        saveCandidates(); renderCandidates();
-      }catch(e){ failed++; log(`  ! 検索結果取得失敗: ${e.message}`); }
-      if(i < IPHONE16_COMBOS.length-1 && !bulkSearchStopRequested) await sleep(delayMs);
+    const result=await callGmailRelay('searchMail',{
+      days:String(Math.max(1,Math.min(30,Number($('mailSearchDays').value||14)))),
+      max_threads:String(Math.max(1,Math.min(100,Number($('mailMaxThreads').value||50)))),
+      max_items:String(Math.max(1,Math.min(100,Number($('mailMaxItems').value||40)))),
+      mark_processed:$('markProcessed').checked?'1':'0'
+    });
+    const items=Array.isArray(result.items)?result.items:[];
+    log(`確認メール: ${result.scannedMessages||0}通`);
+    log(`商品URL検出: ${result.foundUrls||0}件`);
+    if(result.unparsedMessages) log(`URLを抽出できなかったメール: ${result.unparsedMessages}通`);
+    let added=0,rejected=0;
+    items.forEach(raw=>{
+      const c=parseCandidateFromMail(raw);
+      const check=evaluateMailCandidate(c);
+      const label=(c.model||'?')+' '+(c.storage||'?')+' '+(c.price?yen(c.price):'価格不明');
+      if(!check.accepted){
+        rejected++;
+        log('× '+label+' / '+check.reasons.join('、'));
+        return;
+      }
+      candidates=candidates.filter(x=>x.url!==c.url);
+      candidates.push(c);
+      added++;
+      log('✓ '+label+(c.discountRate===null?' / 相場比較不能':' / '+c.discountRate.toFixed(1)+'%安'));
+    });
+    saveCandidates();renderCandidates();
+    status.textContent=`メール検索完了。候補追加 ${added}件／除外 ${rejected}件`;
+    if(result.remainingDueToLimit) status.textContent+='。上限に達したため、もう一度押すと残りを確認できます';
+    status.className='status ok';
+    if(candidates.length){
+      const best=[...candidates].map(c=>({...c,_score:candidateScore(c)})).sort((a,b)=>b._score-a._score)[0];
+      if(best){applyCandidate(best);status.textContent+='。おすすめ1位を③へ反映しました';}
     }
-    saveCandidates(); renderCandidates();
-    status.textContent = bulkSearchStopRequested
-      ? `停止しました。追加 ${added}件（検索成功 ${searchOk}条件）`
-      : `自動検索完了。追加 ${added}件／商品取得成功 ${detailOk}件／失敗 ${failed}件`;
-    status.className = bulkSearchStopRequested ? 'status err' : 'status ok';
-    if(!bulkSearchStopRequested && candidates.length){
-      const best = [...candidates].map(c=>({...c,_score:candidateScore(c)})).sort((a,b)=>b._score-a._score)[0];
-      if(best){ adoptCandidate(best.url); status.textContent += '。おすすめ1位を③へ反映しました'; }
+    if(result.warnings&&result.warnings.length){
+      result.warnings.slice(0,8).forEach(w=>log('! '+w));
     }
+  }catch(e){
+    status.textContent='メール検索に失敗しました: '+e.message;
+    status.className='status err';
+    log('! '+e.message);
   }finally{
-    $('bulkSearchBtn').disabled = false;
-    $('stopBulkBtn').disabled = true;
+    $('bulkSearchBtn').disabled=false;
   }
 }
 
 function renderCandidates(){
   const list=$('candidateList');
-  if(!candidates.length){ list.innerHTML='<div class="emptyBox">候補はまだありません。<br>上の「自動検索・おすすめ決定」を押してください。</div>'; return; }
+  if(!candidates.length){ list.innerHTML='<div class="emptyBox">候補はまだありません。<br>上の「新着通知メールを検索・おすすめ決定」を押してください。</div>'; return; }
   const ranked=[...candidates].map(c=>({...c,_score:candidateScore(c)})).sort((a,b)=>b._score-a._score);
   list.innerHTML=ranked.map((c,i)=>{
     const risk=c.riskFlags.length ? `<span class="badge bad">注意: ${esc(c.riskFlags.join('・'))}</span>` : (i===0?'<span class="badge">今回のおすすめ</span>':'');
@@ -1037,7 +1137,7 @@ function renderCandidates(){
     return `<div class="candidate ${i===0?'best':''}">
       ${risk}<div class="candidateHead">${c.image?`<img src="${esc(c.image)}" alt="">`:'<div style="width:76px;height:76px"></div>'}
       <div><p class="candidateTitle">${esc(c.title)}</p><div class="candidatePrice">${c.price?yen(c.price):'価格不明'}</div>
-      <div class="candidateMeta">${esc(c.model||'機種不明')} / ${esc(c.storage||'容量不明')}<br>平均 ${c.avgPrice?yen(c.avgPrice):'データなし'} / ${discount}<br>状態 ${esc(c.condition||'不明')} / バッテリー ${c.battery===null?'不明':c.battery+'%'} / 選定 ${c._score}点</div></div></div>
+      <div class="candidateMeta">${esc(c.model||'機種不明')} / ${esc(c.storage||'容量不明')}<br>平均 ${c.avgPrice?yen(c.avgPrice):'データなし'} / ${discount}<br>状態 ${esc(c.condition||'不明')} / バッテリー ${c.battery===null?'不明':c.battery+'%'} / 選定 ${c._score}点${c.sourceDate?'<br>通知: '+esc(c.sourceDate):''}</div></div></div>
       <div class="candidateActions"><button class="btn-primary" data-adopt="${esc(c.url)}">この商品を採用</button><button class="btn-secondary" data-delete="${esc(c.url)}">削除</button></div></div>`;
   }).join('');
   list.querySelectorAll('[data-adopt]').forEach(b=>b.addEventListener('click',()=>applyCandidate(candidates.find(c=>c.url===b.dataset.adopt))));
@@ -1072,12 +1172,11 @@ async function addCandidateFromUrl(url){
   }catch(e){status.textContent='候補の取得に失敗しました（'+e.message+'）';status.className='status err';}
 }
 
-$('searchSimFree').addEventListener('change',renderSearchGrid);
 $('bulkSearchBtn').addEventListener('click',runBulkSearch);
-$('stopBulkBtn').addEventListener('click',()=>{ bulkSearchStopRequested=true; $('bulkStatus').textContent='停止要求を受け付けました。現在の通信完了後に停止します...'; });
-['searchMinBattery','searchMinDiscount','excludeRisk'].forEach(id=>$(id).addEventListener('change',renderCandidates));
+['searchMinBattery','searchMinDiscount','excludeRisk','trustSavedSearch','searchSimFree','rejectUnknownBattery','requireShippingIncluded']
+  .forEach(id=>$(id).addEventListener('change',renderCandidates));
 $('clearCandidatesBtn').addEventListener('click',()=>{if(confirm('候補をすべて削除しますか？')){candidates=[];saveCandidates();renderCandidates();}});
-renderSearchGrid();renderCandidates();
+renderCandidates();
 
 (function receiveSharedProduct(){
   const p=new URLSearchParams(location.search);

@@ -1,7 +1,7 @@
 {
-  "name": "iPhone 16 お得商品自動選定",
+  "name": "iPhone出品インフォグラフィック作成",
   "short_name": "iPhoneインフォ",
-  "start_url": "./index.html?v=3",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f4f5f8",
