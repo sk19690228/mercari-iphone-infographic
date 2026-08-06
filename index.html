@@ -1031,7 +1031,7 @@ async function runBulkSearch(){
   $('bulkSearchBtn').disabled=true;
   const status=$('bulkStatus'),progress=$('bulkProgress');
   progress.style.display='block';progress.textContent='';
-  status.textContent='Gmailの未処理メルカリ通知を確認しています...';status.className='status loading';
+  status.textContent='Gmail通知の「すべて見る」から商品一覧を取得しています...';status.className='status loading';
   const log=msg=>{progress.textContent+=msg+'\n';progress.scrollTop=progress.scrollHeight;};
   try{
     const result=await callGmailRelay('searchMail',{
@@ -1042,8 +1042,11 @@ async function runBulkSearch(){
     });
     const items=Array.isArray(result.items)?result.items:[];
     log(`確認メール: ${result.scannedMessages||0}通`);
-    log(`商品URL検出: ${result.foundUrls||0}件`);
-    if(result.unparsedMessages) log(`URLを抽出できなかったメール: ${result.unparsedMessages}通`);
+    log(`商品一覧リンク検出: ${result.listPagesDetected||0}件`);
+    log(`商品一覧ページ取得: ${result.listPagesFetched||0}件`);
+    log(`一覧から商品検出: ${result.listItemsFound||0}件`);
+    log(`処理対象の商品URL: ${result.foundUrls||0}件`);
+    if(result.unparsedMessages) log(`商品一覧または商品URLを抽出できなかったメール: ${result.unparsedMessages}通`);
     let added=0,rejected=0;
     items.forEach(raw=>{
       const c=parseCandidateFromMail(raw);
