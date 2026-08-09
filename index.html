@@ -168,15 +168,11 @@
       <span id="amazonSearchLabel">検索キーワード: -</span>
       <a id="amazonSearchLink" href="#" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600;text-decoration:none;">Amazonで検索 ↗</a>
     </div>
-    <label>Amazon整備済み品URL</label>
-    <input type="url" id="fAmazonUrl" placeholder="例: https://www.amazon.co.jp/dp/... または https://amzn.to/...">
-    <button class="btn-secondary" id="fetchAmazonPriceBtn">URLから価格を取得</button>
-    <div class="status" id="fetchAmazonPriceStatus"></div>
     <label>Amazon整備済み品の価格（円）</label>
-    <input type="text" id="fAmazonPrice" placeholder="URLから自動取得" readonly>
+    <input type="text" id="fAmazonPrice" inputmode="numeric" placeholder="例: 161489">
     <label>アマゾンアフィリエイトリンク</label>
     <input type="text" id="amazonAffiliateUrl" placeholder="例: https://amzn.to/...">
-    <div class="hint">Amazon整備済み品URLを入力するとGAS経由で価格を取得し、⑤の投稿文へ自動反映します。取得できない場合はAmazon側のアクセス制限やページ構造変更の可能性があります。</div>
+    <div class="hint">上の「Amazonで検索」から該当する整備済み品を確認し、表示価格を手入力してください。入力した価格は⑤「投稿文をコピー」に自動反映されます。</div>
   </div>
 
   <div class="card">
@@ -223,7 +219,7 @@
   </div>
 
   <div class="footerNote">
-    商品候補は端末内で処理し、中古平均価格の設定をGASへ保存します。Amazon価格は③のAmazon整備済み品URLから都度取得します。<br>
+    商品候補は端末内で処理し、中古平均価格の設定をGASへ保存します。Amazon価格は③で手入力します。<br>
     相場データは2026年7月時点の参考値です。新着取得は、ボタンを押した時だけGmailのメルカリ通知メールを確認します。
   </div>
 </main>
@@ -474,44 +470,7 @@ function updateAmazonSearchLink(){
 });
 updateAmazonSearchLink();
 
-// ========== Amazon整備済み品URLから価格取得 ==========
-async function fetchAmazonPriceFromUrl(){
-  const url = $('fAmazonUrl').value.trim();
-  const statusEl = $('fetchAmazonPriceStatus');
-  if(!url){
-    statusEl.textContent = 'Amazon整備済み品URLを入力してください';
-    statusEl.className = 'status err';
-    return false;
-  }
-  if(!/^https?:\/\//i.test(url)){
-    statusEl.textContent = 'http:// または https:// から始まるURLを入力してください';
-    statusEl.className = 'status err';
-    return false;
-  }
-  statusEl.textContent = 'Amazon価格を取得中...';
-  statusEl.className = 'status loading';
-  $('fetchAmazonPriceBtn').disabled = true;
-  try{
-    const r = await callGmailRelay('fetchAmazonPrice', { url });
-    const price = Number(r.price || 0);
-    if(!price) throw new Error('価格を検出できませんでした');
-    $('fAmazonPrice').value = String(price);
-    statusEl.textContent = '取得価格: ' + price.toLocaleString() + '円';
-    statusEl.className = 'status ok';
-    regeneratePostText();
-    return true;
-  }catch(e){
-    $('fAmazonPrice').value = '';
-    regeneratePostText();
-    statusEl.textContent = '価格取得に失敗しました: ' + e.message;
-    statusEl.className = 'status err';
-    return false;
-  }finally{
-    $('fetchAmazonPriceBtn').disabled = false;
-  }
-}
-$('fetchAmazonPriceBtn').addEventListener('click', fetchAmazonPriceFromUrl);
-$('fAmazonUrl').addEventListener('change', () => { if($('fAmazonUrl').value.trim()) fetchAmazonPriceFromUrl(); });
+// Amazon価格は手入力方式（Amazon側の自動取得制限を回避）
 
 // ========== 中古平均価格一覧（iPhone 16シリーズ） ==========// ========== 中古平均価格一覧（iPhone 16シリーズ） ==========
 const avgPriceCombos = Object.keys(PRICE_TABLE).filter(k => k.split('|')[0].startsWith('iPhone 16')).sort();
@@ -598,8 +557,6 @@ function buildPostText(){
 function regeneratePostText(){ $('postText').value = buildPostText(); }
 $('regenPostBtn').addEventListener('click', regeneratePostText);
 $('fAmazonPrice').addEventListener('input', regeneratePostText);
-$('fAmazonUrl').value = localStorage.getItem('amazonRenewedCurrentUrl') || '';
-$('fAmazonUrl').addEventListener('input', () => localStorage.setItem('amazonRenewedCurrentUrl', $('fAmazonUrl').value.trim()));
 regeneratePostText();
 
 // ========== ⑥ PR表記・アフィリエイトリンク ==========
