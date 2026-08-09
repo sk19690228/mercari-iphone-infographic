@@ -1040,7 +1040,7 @@ function applyCandidate(c){
   if(c.condition) $('fCondition').value=c.condition;
   $('fBattery').value=c.battery===null?'情報：無':c.battery;
   if(c.image){$('imgPreview').src=c.image;$('imgPreview').dataset.src=c.image;$('imgPreview').style.display='block';}
-  updateAvgPriceDisplay(); updateAmazonSearchLink(); regeneratePostText(); suggestAmazonAffiliateFromRegistry(); regenerateAffiliateText();
+  updateAvgPriceDisplay(); updateAmazonSearchLink(); regeneratePostText(); regenerateAffiliateText();
   window.scrollTo({top:$('fTitle').getBoundingClientRect().top+window.scrollY-20,behavior:'smooth'});
 }
 
