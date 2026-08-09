@@ -164,12 +164,12 @@
     </select>
     <label>バッテリー最大容量(%) ※不明なら空欄可</label>
     <input type="text" id="fBattery" placeholder="例: 89">
-    <label>Amazon整備済み品の最低価格（円）</label>
-    <input type="text" id="fAmazonPrice" placeholder="例: 52000">
     <div class="avgBox">
       <span id="amazonSearchLabel">検索キーワード: -</span>
       <a id="amazonSearchLink" href="#" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600;text-decoration:none;">Amazonで検索 ↗</a>
     </div>
+    <label>Amazon整備済み品の最低価格（円）</label>
+    <input type="text" id="fAmazonPrice" placeholder="例: 52000">
     <label>アマゾンアフィリエイトリンク</label>
     <input type="text" id="amazonAffiliateUrl" placeholder="例: https://amzn.to/...">
     <div class="hint">Amazon整備済み品の商品ページを確認し、アフィリエイトリンクを入力してください。</div>
@@ -182,8 +182,16 @@
   </div>
 
   <div class="card">
+    <h2>⑦ Xポスト用画像を生成</h2>
+    <button class="btn-primary" id="generateBtn">インフォグラフィック画像を作成</button>
+    <img id="outputImg" alt="生成された画像">
+    <button class="btn-secondary" id="downloadBtn" style="display:none;">画像をダウンロード</button>
+    <canvas id="outputCanvas" width="1200" height="800"></canvas>
+  </div>
+
+  <div class="card">
     <h2>⑤ 投稿文をコピー</h2>
-    <label>商品タイトル・メルカリ価格・Amazon整備済み品最低価格をまとめたテキスト</label>
+    <label>機種名・メルカリ価格・Amazon整備済み品価格の固定テンプレート</label>
     <textarea id="postText" rows="5" style="font-size:14px;"></textarea>
     <button class="btn-secondary" id="regenPostBtn">テキストを再生成</button>
     <button class="btn-primary" id="copyPostBtn">コピー</button>
@@ -201,52 +209,28 @@
   </div>
 
   <div class="card">
-    <h2>⑦ Xポスト用画像を生成</h2>
-    <button class="btn-primary" id="generateBtn">インフォグラフィック画像を作成</button>
-    <img id="outputImg" alt="生成された画像">
-    <button class="btn-secondary" id="downloadBtn" style="display:none;">画像をダウンロード</button>
-    <canvas id="outputCanvas" width="1200" height="800"></canvas>
-  </div>
-
-  <div class="card">
-    <h2>🔗 GitHub連携設定</h2>
-    <label>GitHubアクセストークン（Personal Access Token）</label>
-    <input type="password" id="githubToken" placeholder="ghp_... または github_pat_...">
-    <div class="hint">
-      ・トークンはファイルやこのブラウザには保存されません。タブを閉じると消えるので、保存のたびに入力してください。<br>
-      ・GitHubの Settings → Developer settings → Personal access tokens → Fine-grained tokens で発行できます。<br>
-      ・対象リポジトリだけに絞り、権限は「Contents: Read and write」のみで十分です。<br>
-      ・トークンが他人に知られると、そのリポジトリを誰でも書き換えられてしまいます。取り扱いに注意してください。
-    </div>
-    <div class="row2">
-      <div><label>リポジトリ所有者</label><input type="text" id="githubOwner" value="sk19690228"></div>
-      <div><label>リポジトリ名</label><input type="text" id="githubRepo" value="mercari-iphone-infographic"></div>
-    </div>
-  </div>
-
-  <div class="card">
     <h2>⚙️ Amazon整備済み品URL登録（iPhone 16シリーズ）</h2>
     <div class="hint">
-      「GitHubに保存」を押すと、上のトークンを使ってこのリポジトリの <code>amazon-urls.json</code> を直接更新します。
-      トークンを使いたくない場合は「共有用JSONをコピー」→ GitHub側で手動貼り替えでも同じ結果になります。
+      URLはGASのスクリプトプロパティへ保存します。GitHubアクセストークンは不要です。
+      同じGAS URL・中継用トークンを使う端末から同じ設定を読み込めます。
     </div>
     <div id="amazonRegistryList"></div>
     <button class="btn-secondary" id="copyRegistryJsonBtn">共有用JSONをコピー</button>
-    <button class="btn-primary" id="saveAmazonToGithubBtn">GitHubに保存</button>
+    <button class="btn-primary" id="saveAmazonToGasBtn">GASに保存</button>
     <div class="status" id="copyRegistryStatus"></div>
   </div>
 
   <div class="card">
     <h2>📊 中古平均価格一覧（iPhone 16シリーズ）</h2>
-    <div class="hint">アプリ内蔵の参考価格（2026年7月時点・ムスビー基準）を表示しています。実勢に合わせて上書きし、GitHubに保存すると全端末に反映されます。</div>
+    <div class="hint">アプリ内蔵の参考価格（2026年7月時点・ムスビー基準）を表示しています。実勢に合わせて上書きし、GASに保存すると同じGAS設定を使う端末へ反映できます。</div>
     <div id="avgPriceRegistryList"></div>
     <button class="btn-secondary" id="copyAvgPriceJsonBtn">共有用JSONをコピー</button>
-    <button class="btn-primary" id="saveAvgPriceToGithubBtn">GitHubに保存</button>
+    <button class="btn-primary" id="saveAvgPriceToGasBtn">GASに保存</button>
     <div class="status" id="avgPriceStatus"></div>
   </div>
 
   <div class="footerNote">
-    このアプリはブラウザ内で完結し、サーバーに商品データを保存しません。<br>
+    商品候補は端末内で処理し、Amazon URLと中古平均価格の設定のみGASへ保存します。<br>
     相場データは2026年7月時点の参考値です。新着取得は、ボタンを押した時だけGmailのメルカリ通知メールを確認します。
   </div>
 </main>
@@ -486,12 +470,12 @@ function drawPreview(){
 updateAvgPriceDisplay();
 
 function updateAmazonSearchLink(){
-  const model = $('fModel').value, storage = $('fStorage').value, color = $('fColor').value;
-  const keyword = [model, storage, color, '整備済み'].filter(Boolean).join(' ');
+  const model = $('fModel').value, storage = $('fStorage').value;
+  const keyword = [model, storage, '整備済み'].filter(Boolean).join(' ');
   $('amazonSearchLabel').textContent = '検索キーワード: ' + keyword;
   $('amazonSearchLink').href = 'https://www.amazon.co.jp/s?k=' + encodeURIComponent(keyword);
 }
-['fModel','fStorage','fColor'].forEach(id => {
+['fModel','fStorage'].forEach(id => {
   $(id).addEventListener('input', updateAmazonSearchLink);
   $(id).addEventListener('change', updateAmazonSearchLink);
 });
@@ -553,49 +537,23 @@ $('copyRegistryJsonBtn').addEventListener('click', () => {
   copyTextToClipboard(json, 'copyRegistryStatus');
 });
 
-// ========== GitHubへの直接保存(共通処理) ==========
-async function saveJsonToGithub(path, dataObj, message){
-  const token = $('githubToken').value.trim();
-  const owner = $('githubOwner').value.trim() || 'sk19690228';
-  const repo = $('githubRepo').value.trim() || 'mercari-iphone-infographic';
-  if(!token){ throw new Error('GitHubアクセストークンを入力してください'); }
-  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
-  const headers = {
-    'Authorization': 'Bearer ' + token,
-    'Accept': 'application/vnd.github+json'
-  };
-  let sha = null;
-  const getRes = await fetch(apiUrl, { headers });
-  if(getRes.ok){
-    const getData = await getRes.json();
-    sha = getData.sha;
-  } else if(getRes.status !== 404){
-    throw new Error('ファイル確認エラー: HTTP ' + getRes.status + '（トークンの権限を確認してください）');
-  }
-  const jsonText = JSON.stringify(dataObj, null, 2);
-  const content = btoa(unescape(encodeURIComponent(jsonText)));
-  const putBody = { message: message || ('update ' + path), content, branch: 'main' };
-  if(sha) putBody.sha = sha;
-  const putRes = await fetch(apiUrl, {
-    method: 'PUT',
-    headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify(putBody)
-  });
-  if(!putRes.ok){
-    const errText = await putRes.text();
-    throw new Error('保存エラー: HTTP ' + putRes.status + ' ' + errText.slice(0,150));
-  }
+// ========== GASへの設定保存（Amazon URL） ==========
+function buildAmazonRegistryPayload(){
+  const cleaned = {};
+  amazonRegistryCombos.forEach(combo => { if(amazonRegistry[combo]) cleaned[combo] = amazonRegistry[combo]; });
+  return cleaned;
 }
 
-$('saveAmazonToGithubBtn').addEventListener('click', async () => {
+$('saveAmazonToGasBtn').addEventListener('click', async () => {
   const statusEl = $('copyRegistryStatus');
-  statusEl.textContent = 'GitHubに保存中...';
+  statusEl.textContent = 'GASに保存中...';
   statusEl.className = 'status loading';
   try {
-    const cleaned = {};
-    amazonRegistryCombos.forEach(combo => { if(amazonRegistry[combo]) cleaned[combo] = amazonRegistry[combo]; });
-    await saveJsonToGithub('amazon-urls.json', cleaned, 'Update amazon-urls.json via app');
-    statusEl.textContent = 'GitHubに保存しました';
+    const cleaned = buildAmazonRegistryPayload();
+    await callGmailRelay('saveAmazonUrls', { data: JSON.stringify(cleaned) });
+    amazonRegistry = { ...cleaned };
+    saveAmazonRegistryLocal(amazonRegistry);
+    statusEl.textContent = 'GASに保存しました';
     statusEl.className = 'status ok';
   } catch(e){
     statusEl.textContent = e.message;
@@ -603,7 +561,7 @@ $('saveAmazonToGithubBtn').addEventListener('click', async () => {
   }
 });
 
-// ========== 中古平均価格一覧（iPhone 16シリーズ） ==========
+// ========== 中古平均価格一覧（iPhone 16シリーズ） ==========// ========== 中古平均価格一覧（iPhone 16シリーズ） ==========
 let avgPriceOverrides = {};
 
 function renderAvgPriceRegistryUI(){
@@ -653,9 +611,9 @@ $('copyAvgPriceJsonBtn').addEventListener('click', () => {
   copyTextToClipboard(JSON.stringify(cleaned, null, 2), 'avgPriceStatus');
 });
 
-$('saveAvgPriceToGithubBtn').addEventListener('click', async () => {
+$('saveAvgPriceToGasBtn').addEventListener('click', async () => {
   const statusEl = $('avgPriceStatus');
-  statusEl.textContent = 'GitHubに保存中...';
+  statusEl.textContent = 'GASに保存中...';
   statusEl.className = 'status loading';
   try {
     const cleaned = {};
@@ -663,8 +621,9 @@ $('saveAvgPriceToGithubBtn').addEventListener('click', async () => {
       const v = avgPriceOverrides[combo] ?? PRICE_TABLE[combo];
       if(v) cleaned[combo] = Number(v);
     });
-    await saveJsonToGithub('mercari-avg-prices.json', cleaned, 'Update mercari-avg-prices.json via app');
-    statusEl.textContent = 'GitHubに保存しました';
+    await callGmailRelay('saveAvgPrices', { data: JSON.stringify(cleaned) });
+    avgPriceOverrides = { ...cleaned };
+    statusEl.textContent = 'GASに保存しました';
     statusEl.className = 'status ok';
   } catch(e){
     statusEl.textContent = e.message;
@@ -684,26 +643,26 @@ function suggestAmazonAffiliateFromRegistry(){
   $(id).addEventListener('change', suggestAmazonAffiliateFromRegistry);
 });
 
-// ========== ④ 投稿文生成・コピー ==========
+// ========== ⑤ 投稿文生成・コピー ==========
 function buildPostText(){
-  const title = $('fTitle').value || '(商品タイトル未設定)';
-  const priceRaw = $('fPrice').value;
-  const price = priceRaw ? Number(String(priceRaw).replace(/[^\d]/g,'')).toLocaleString()+'円' : '(価格未設定)';
+  const model = $('fModel').value || 'iPhone';
+  const storage = $('fStorage').value || '';
+  const mercariRaw = $('fPrice').value;
   const amazonRaw = $('fAmazonPrice').value;
+  const mercariPrice = mercariRaw ? Number(String(mercariRaw).replace(/[^\d]/g,'')).toLocaleString()+'円' : '(価格未設定)';
   const amazonPrice = amazonRaw ? Number(String(amazonRaw).replace(/[^\d]/g,'')).toLocaleString()+'円' : '(Amazon価格未入力)';
-  const productUrl = $('selectedMercariUrl').value.trim();
-  return `${title}\n${price}${productUrl ? '\n'+productUrl : ''}\nAmazon整備済み品 最安値: ${amazonPrice}`;
+  return `📱${model}${storage ? ' '+storage : ''}\n✨メルカリ優良オススメ品⇒${mercariPrice}\n♻️Amazon整備済み品⇒${amazonPrice}`;
 }
 function regeneratePostText(){ $('postText').value = buildPostText(); }
 $('regenPostBtn').addEventListener('click', regeneratePostText);
 $('fAmazonPrice').addEventListener('input', regeneratePostText);
 regeneratePostText();
 
-// ========== ⑤ PR表記・アフィリエイトリンク ==========
+// ========== ⑥ PR表記・アフィリエイトリンク ==========
 function buildAffiliateText(){
   const mercariUrl = $('mercariAffiliateUrl').value.trim() || '(メルカリアフィリエイトリンク未入力)';
   const amazonUrl = $('amazonAffiliateUrl').value.trim() || '(アマゾンアフィリエイトリンク未入力)';
-  return '📱✨オススメiPhone✨📱\n'
+  return '📱✨メルカリ優良オススメ品✨📱\n'
     + `${mercariUrl}\n`
     + '🏷️【PR】メルカリアンバサダー\n\n'
     + '♻️🍎アマゾン整備済み品🍎♻️\n'
@@ -921,6 +880,33 @@ function callGmailRelay(action,params={}){
   });
 }
 
+async function loadAppConfigFromGas({silent=false}={}){
+  const cfg=getMercariApiSettings();
+  if(!cfg.url || !cfg.token) return false;
+  try{
+    const r=await callGmailRelay('getAppConfig');
+    if(r.amazonUrls && typeof r.amazonUrls==='object'){
+      amazonRegistry={...amazonRegistry,...r.amazonUrls};
+      saveAmazonRegistryLocal(amazonRegistry);
+      renderAmazonRegistryUI();
+    }
+    if(r.avgPrices && typeof r.avgPrices==='object'){
+      avgPriceOverrides={...r.avgPrices};
+      Object.keys(avgPriceOverrides).forEach(k=>{
+        const v=Number(avgPriceOverrides[k]);
+        if(v) PRICE_TABLE[k]=v;
+      });
+      renderAvgPriceRegistryUI();
+      updateAvgPriceDisplay();
+    }
+    return true;
+  }catch(e){
+    if(!silent) throw e;
+    console.warn('GAS設定読込失敗:',e.message);
+    return false;
+  }
+}
+
 function pick(obj,keys,fallback=''){
   for(const k of keys){
     if(obj && obj[k]!==undefined && obj[k]!==null && obj[k]!=='') return obj[k];
@@ -997,7 +983,8 @@ async function testMercariApi(){
   el.textContent='Gmail接続を確認中...'; el.className='status loading';
   try{
     const r=await callGmailRelay('health');
-    el.textContent='接続できました（'+(r.provider||'Gmail通知中継')+'）';
+    await loadAppConfigFromGas({silent:true});
+    el.textContent='接続できました（'+(r.provider||'Gmail通知中継')+'）・GAS保存設定も読み込みました';
     el.className='status ok';
   }catch(e){
     el.textContent='接続できません: '+e.message;
@@ -1019,6 +1006,10 @@ async function resetMailHistory(){
   }
 }
 $('resetMailHistoryBtn').addEventListener('click',resetMailHistory);
+
+window.addEventListener('load',()=>{
+  setTimeout(()=>loadAppConfigFromGas({silent:true}),300);
+});
 
 async function runBulkSearch(){
   if($('bulkSearchBtn').disabled) return;
