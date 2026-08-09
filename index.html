@@ -168,11 +168,15 @@
       <span id="amazonSearchLabel">検索キーワード: -</span>
       <a id="amazonSearchLink" href="#" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600;text-decoration:none;">Amazonで検索 ↗</a>
     </div>
-    <label>Amazon整備済み品の最低価格（円）</label>
-    <input type="text" id="fAmazonPrice" placeholder="例: 52000">
+    <label>Amazon整備済み品URL</label>
+    <input type="url" id="fAmazonUrl" placeholder="例: https://www.amazon.co.jp/dp/... または https://amzn.to/...">
+    <button class="btn-secondary" id="fetchAmazonPriceBtn">URLから価格を取得</button>
+    <div class="status" id="fetchAmazonPriceStatus"></div>
+    <label>Amazon整備済み品の価格（円）</label>
+    <input type="text" id="fAmazonPrice" placeholder="URLから自動取得" readonly>
     <label>アマゾンアフィリエイトリンク</label>
     <input type="text" id="amazonAffiliateUrl" placeholder="例: https://amzn.to/...">
-    <div class="hint">Amazon整備済み品の商品ページを確認し、アフィリエイトリンクを入力してください。</div>
+    <div class="hint">Amazon整備済み品URLを入力するとGAS経由で価格を取得し、⑤の投稿文へ自動反映します。取得できない場合はAmazon側のアクセス制限やページ構造変更の可能性があります。</div>
   </div>
 
   <div class="card">
@@ -208,17 +212,6 @@
     <div class="status" id="copyAffiliateStatus"></div>
   </div>
 
-  <div class="card">
-    <h2>⚙️ Amazon整備済み品URL登録（iPhone 16シリーズ）</h2>
-    <div class="hint">
-      URLはGASのスクリプトプロパティへ保存します。GitHubアクセストークンは不要です。
-      同じGAS URL・中継用トークンを使う端末から同じ設定を読み込めます。
-    </div>
-    <div id="amazonRegistryList"></div>
-    <button class="btn-secondary" id="copyRegistryJsonBtn">共有用JSONをコピー</button>
-    <button class="btn-primary" id="saveAmazonToGasBtn">GASに保存</button>
-    <div class="status" id="copyRegistryStatus"></div>
-  </div>
 
   <div class="card">
     <h2>📊 中古平均価格一覧（iPhone 16シリーズ）</h2>
@@ -230,7 +223,7 @@
   </div>
 
   <div class="footerNote">
-    商品候補は端末内で処理し、Amazon URLと中古平均価格の設定のみGASへ保存します。<br>
+    商品候補は端末内で処理し、中古平均価格の設定をGASへ保存します。Amazon価格は③のAmazon整備済み品URLから都度取得します。<br>
     相場データは2026年7月時点の参考値です。新着取得は、ボタンを押した時だけGmailのメルカリ通知メールを確認します。
   </div>
 </main>
@@ -481,92 +474,52 @@ function updateAmazonSearchLink(){
 });
 updateAmazonSearchLink();
 
-// ========== Amazon整備済み品URL登録（iPhone 16シリーズ） ==========
-const amazonRegistryCombos = Object.keys(PRICE_TABLE)
-  .filter(k => k.split('|')[0].startsWith('iPhone 16'))
-  .sort();
-
-function loadAmazonRegistryLocal(){
-  try { return JSON.parse(localStorage.getItem('amazonRenewedUrls') || '{}'); }
-  catch(e){ return {}; }
-}
-function saveAmazonRegistryLocal(reg){
-  try { localStorage.setItem('amazonRenewedUrls', JSON.stringify(reg)); }
-  catch(e){ /* 保存できない環境(プレビュー枠など)では無視 */ }
-}
-let amazonRegistry = loadAmazonRegistryLocal();
-
-function renderAmazonRegistryUI(){
-  const container = $('amazonRegistryList');
-  container.innerHTML = amazonRegistryCombos.map(combo => {
-    const [model, storage] = combo.split('|');
-    return `<label>${model}（${storage}）</label><input type="text" class="amazonRegistryInput" data-combo="${combo}" placeholder="Amazon商品ページURL">`;
-  }).join('');
-  container.querySelectorAll('.amazonRegistryInput').forEach(input => {
-    const combo = input.dataset.combo;
-    input.value = amazonRegistry[combo] || '';
-    input.addEventListener('change', () => {
-      amazonRegistry[combo] = input.value.trim();
-      saveAmazonRegistryLocal(amazonRegistry);
-    });
-  });
-}
-renderAmazonRegistryUI();
-
-// 同じ階層にamazon-urls.jsonがあれば、それを共有の正としてブラウザ保存より優先して読み込む
-(async function loadSharedAmazonRegistry(){
-  try {
-    const res = await fetch('./amazon-urls.json', { cache: 'no-store' });
-    if(res.ok){
-      const shared = await res.json();
-      if(shared && typeof shared === 'object'){
-        amazonRegistry = { ...amazonRegistry, ...shared };
-        saveAmazonRegistryLocal(amazonRegistry);
-        renderAmazonRegistryUI();
-      }
-    }
-  } catch(e){ /* 単体HTMLとして開いている場合などはファイルが無いので無視 */ }
-})();
-
-$('copyRegistryJsonBtn').addEventListener('click', () => {
-  const cleaned = {};
-  amazonRegistryCombos.forEach(combo => {
-    if(amazonRegistry[combo]) cleaned[combo] = amazonRegistry[combo];
-  });
-  const json = JSON.stringify(cleaned, null, 2);
-  copyTextToClipboard(json, 'copyRegistryStatus');
-});
-
-// ========== GASへの設定保存（Amazon URL） ==========
-function buildAmazonRegistryPayload(){
-  const cleaned = {};
-  amazonRegistryCombos.forEach(combo => { if(amazonRegistry[combo]) cleaned[combo] = amazonRegistry[combo]; });
-  return cleaned;
-}
-
-$('saveAmazonToGasBtn').addEventListener('click', async () => {
-  const statusEl = $('copyRegistryStatus');
-  statusEl.textContent = 'GASに保存中...';
-  statusEl.className = 'status loading';
-  try {
-    const cleaned = buildAmazonRegistryPayload();
-    await callGmailRelay('saveAmazonUrls', { data: JSON.stringify(cleaned) });
-    amazonRegistry = { ...cleaned };
-    saveAmazonRegistryLocal(amazonRegistry);
-    statusEl.textContent = 'GASに保存しました';
-    statusEl.className = 'status ok';
-  } catch(e){
-    statusEl.textContent = e.message;
+// ========== Amazon整備済み品URLから価格取得 ==========
+async function fetchAmazonPriceFromUrl(){
+  const url = $('fAmazonUrl').value.trim();
+  const statusEl = $('fetchAmazonPriceStatus');
+  if(!url){
+    statusEl.textContent = 'Amazon整備済み品URLを入力してください';
     statusEl.className = 'status err';
+    return false;
   }
-});
+  if(!/^https?:\/\//i.test(url)){
+    statusEl.textContent = 'http:// または https:// から始まるURLを入力してください';
+    statusEl.className = 'status err';
+    return false;
+  }
+  statusEl.textContent = 'Amazon価格を取得中...';
+  statusEl.className = 'status loading';
+  $('fetchAmazonPriceBtn').disabled = true;
+  try{
+    const r = await callGmailRelay('fetchAmazonPrice', { url });
+    const price = Number(r.price || 0);
+    if(!price) throw new Error('価格を検出できませんでした');
+    $('fAmazonPrice').value = String(price);
+    statusEl.textContent = '取得価格: ' + price.toLocaleString() + '円';
+    statusEl.className = 'status ok';
+    regeneratePostText();
+    return true;
+  }catch(e){
+    $('fAmazonPrice').value = '';
+    regeneratePostText();
+    statusEl.textContent = '価格取得に失敗しました: ' + e.message;
+    statusEl.className = 'status err';
+    return false;
+  }finally{
+    $('fetchAmazonPriceBtn').disabled = false;
+  }
+}
+$('fetchAmazonPriceBtn').addEventListener('click', fetchAmazonPriceFromUrl);
+$('fAmazonUrl').addEventListener('change', () => { if($('fAmazonUrl').value.trim()) fetchAmazonPriceFromUrl(); });
 
 // ========== 中古平均価格一覧（iPhone 16シリーズ） ==========// ========== 中古平均価格一覧（iPhone 16シリーズ） ==========
+const avgPriceCombos = Object.keys(PRICE_TABLE).filter(k => k.split('|')[0].startsWith('iPhone 16')).sort();
 let avgPriceOverrides = {};
 
 function renderAvgPriceRegistryUI(){
   const container = $('avgPriceRegistryList');
-  container.innerHTML = amazonRegistryCombos.map(combo => {
+  container.innerHTML = avgPriceCombos.map(combo => {
     const [model, storage] = combo.split('|');
     return `<label>${model}（${storage}）</label><input type="text" class="avgPriceRegistryInput" data-combo="${combo}" placeholder="円">`;
   }).join('');
@@ -604,7 +557,7 @@ renderAvgPriceRegistryUI();
 
 $('copyAvgPriceJsonBtn').addEventListener('click', () => {
   const cleaned = {};
-  amazonRegistryCombos.forEach(combo => {
+  avgPriceCombos.forEach(combo => {
     const v = avgPriceOverrides[combo] ?? PRICE_TABLE[combo];
     if(v) cleaned[combo] = Number(v);
   });
@@ -617,7 +570,7 @@ $('saveAvgPriceToGasBtn').addEventListener('click', async () => {
   statusEl.className = 'status loading';
   try {
     const cleaned = {};
-    amazonRegistryCombos.forEach(combo => {
+    avgPriceCombos.forEach(combo => {
       const v = avgPriceOverrides[combo] ?? PRICE_TABLE[combo];
       if(v) cleaned[combo] = Number(v);
     });
@@ -631,17 +584,6 @@ $('saveAvgPriceToGasBtn').addEventListener('click', async () => {
   }
 });
 
-function suggestAmazonAffiliateFromRegistry(){
-  const combo = $('fModel').value + '|' + $('fStorage').value;
-  const url = amazonRegistry[combo];
-  if(url && !$('amazonAffiliateUrl').value.trim()){
-    $('amazonAffiliateUrl').value = url;
-    regenerateAffiliateText();
-  }
-}
-['fModel','fStorage'].forEach(id => {
-  $(id).addEventListener('change', suggestAmazonAffiliateFromRegistry);
-});
 
 // ========== ⑤ 投稿文生成・コピー ==========
 function buildPostText(){
@@ -656,6 +598,8 @@ function buildPostText(){
 function regeneratePostText(){ $('postText').value = buildPostText(); }
 $('regenPostBtn').addEventListener('click', regeneratePostText);
 $('fAmazonPrice').addEventListener('input', regeneratePostText);
+$('fAmazonUrl').value = localStorage.getItem('amazonRenewedCurrentUrl') || '';
+$('fAmazonUrl').addEventListener('input', () => localStorage.setItem('amazonRenewedCurrentUrl', $('fAmazonUrl').value.trim()));
 regeneratePostText();
 
 // ========== ⑥ PR表記・アフィリエイトリンク ==========
@@ -885,11 +829,6 @@ async function loadAppConfigFromGas({silent=false}={}){
   if(!cfg.url || !cfg.token) return false;
   try{
     const r=await callGmailRelay('getAppConfig');
-    if(r.amazonUrls && typeof r.amazonUrls==='object'){
-      amazonRegistry={...amazonRegistry,...r.amazonUrls};
-      saveAmazonRegistryLocal(amazonRegistry);
-      renderAmazonRegistryUI();
-    }
     if(r.avgPrices && typeof r.avgPrices==='object'){
       avgPriceOverrides={...r.avgPrices};
       Object.keys(avgPriceOverrides).forEach(k=>{
