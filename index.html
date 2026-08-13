@@ -76,6 +76,7 @@
   .progressBox{margin-top:10px;padding:10px;border-radius:10px;background:var(--panel2);font-size:11px;line-height:1.65;white-space:pre-wrap;max-height:220px;overflow:auto;}
   .apiRequired{border-left:4px solid var(--warn);padding-left:10px;}
   .popPreview{margin-top:12px;padding:12px;text-align:center;border:3px solid #111827;border-radius:14px;background:#fff36d;color:#111827;font-size:18px;font-weight:900;letter-spacing:.04em;transform:rotate(-1deg);box-shadow:4px 4px 0 #111827;}
+  #ocrPreview{width:100%;max-height:300px;object-fit:contain;border-radius:12px;border:1px solid var(--border);background:var(--panel2);margin-top:8px;display:none;}
 </style>
 </head>
 <body>
@@ -169,9 +170,15 @@
       <option value="傷や汚れあり">傷や汚れあり</option>
       <option value="全体的に状態が悪い">全体的に状態が悪い</option>
     </select>
-    <label>商品紹介文（商品説明から自動生成・60文字以内）</label>
-    <textarea id="fSummary" maxlength="60" placeholder="選択商品の説明から60文字以内で自動生成します"></textarea>
+    <label>商品紹介文（商品説明から自動生成・120文字以内）</label>
+    <textarea id="fSummary" maxlength="120" rows="4" placeholder="商品の状態・動作・付属品などを箇条書きで自動要約します"></textarea>
     <div class="status" id="summaryStatus"></div>
+    <label>商品の説明スクリーンショット</label>
+    <input type="file" id="descriptionScreenshot" accept="image/png,image/jpeg,image/webp" hidden>
+    <button class="btn-secondary" id="selectScreenshotBtn" type="button">スクリーンショットを選択</button>
+    <img id="ocrPreview" alt="選択したスクリーンショット">
+    <button class="btn-primary" id="ocrSummaryBtn" type="button" disabled>文字起こし・要約</button>
+    <div class="status" id="ocrStatus"></div>
     <label>バッテリー最大容量(%) ※不明なら空欄可</label>
     <input type="text" id="fBattery" placeholder="例: 89">
     <div class="avgBox">
@@ -181,7 +188,7 @@
     <label>Amazon整備済品価格（円）</label>
     <input type="text" id="fAmazonPrice" inputmode="numeric" placeholder="例: 161489">
     <label>アマゾンアフィリエイトリンク</label>
-    <input type="text" id="amazonAffiliateUrl" placeholder="例: https://amzn.to/...">
+    <div class="fieldAction"><input type="text" id="amazonAffiliateUrl" placeholder="例: https://amzn.to/..."><button class="btn-secondary" id="clearAmazonAffiliateBtn" type="button">クリア</button></div>
     <div class="hint">上の「Amazonで検索」から該当するAmazon整備済品を確認し、表示価格を手入力してください。入力した価格は⑤「投稿文をコピー」に自動反映されます。</div>
   </div>
 
@@ -195,7 +202,7 @@
   <div class="card">
     <h2>⑦ Xポスト用画像を生成</h2>
     <button class="btn-primary" id="generateBtn">インフォグラフィック画像を作成</button>
-    <img id="outputImg" alt="商品画像2枚・価格比較・投稿文のインフォグラフィック">
+    <img id="outputImg" alt="商品画像・価格比較・投稿文のインフォグラフィック">
     <button class="btn-secondary" id="downloadBtn" style="display:none;">画像をダウンロード</button>
     <canvas id="outputCanvas" width="1080" height="1350"></canvas>
   </div>
@@ -235,6 +242,7 @@
   </div>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -547,7 +555,7 @@ function buildPostText(){
   const mercariPrice = mercariRaw ? Number(String(mercariRaw).replace(/[^\d]/g,'')).toLocaleString()+'円' : '(価格未設定)';
   const amazonPrice = amazonRaw ? Number(String(amazonRaw).replace(/[^\d]/g,'')).toLocaleString()+'円' : '(Amazon価格未入力)';
   const title = $('fTitle').value.trim() || '(商品タイトル未設定)';
-  const summary = $('fSummary').value.trim().slice(0,60) || '(商品紹介文未設定)';
+  const summary = $('fSummary').value.trim().slice(0,120) || '(商品紹介文未設定)';
   return `📱${model}${storage ? ' '+storage : ''}\n✨メルカリ優良品\n${title}（${mercariPrice}）\n${summary}\n\n♻️Amazon整備済品（${amazonPrice}）\n✨安心の180日間の返品・交換保証付き✨`;
 }
 function regeneratePostText(){ $('postText').value = buildPostText(); }
@@ -579,6 +587,9 @@ $('mercariAffiliateUrl').addEventListener('input', () => { saveAffiliateLinks();
 $('amazonAffiliateUrl').addEventListener('input', () => { saveAffiliateLinks(); regenerateAffiliateText(); });
 $('clearMercariAffiliateBtn').addEventListener('click',()=>{
   $('mercariAffiliateUrl').value='';saveAffiliateLinks();regenerateAffiliateText();$('mercariAffiliateUrl').focus();
+});
+$('clearAmazonAffiliateBtn').addEventListener('click',()=>{
+  $('amazonAffiliateUrl').value='';saveAffiliateLinks();regenerateAffiliateText();$('amazonAffiliateUrl').focus();
 });
 regenerateAffiliateText();
 
@@ -662,11 +673,63 @@ function summarizeProductDescription(text){
     .replace(/\s+/g,' ')
     .trim();
   if(!cleaned) return '';
-  const parts=cleaned.split(/(?<=[。！？!?])\s*/).map(s=>s.trim()).filter(s=>s.length>=5);
-  const useful=parts.filter(s=>!/(ご覧いただき|よろしくお願い|即購入|コメント|プロフィール)/.test(s));
-  const source=(useful.length?useful:parts).slice(0,2).join('');
-  return (source||cleaned).replace(/\s+/g,' ').trim().slice(0,60);
+  const parts=cleaned
+    .split(/(?<=[。！？!?])\s*|[\n\r]+|[・●■◆◇※]+/)
+    .map(s=>s.replace(/^[\s,、。・:：-]+|[\s,、・:：-]+$/g,'').trim())
+    .filter(s=>s.length>=4&&!/(ご覧いただき|よろしくお願い|即購入|コメント|プロフィール|購入前に)/.test(s));
+  const unique=[...new Set(parts)];
+  const priority=/(傷|汚れ|美品|状態|動作|不具合|バッテリー|最大容量|付属品|箱|ケーブル|SIM|残債|利用制限|修理|交換|容量|カラー)/;
+  const ranked=unique.map((s,i)=>({s,i,score:priority.test(s)?2:0})).sort((a,b)=>b.score-a.score||a.i-b.i);
+  const bullets=[];
+  for(const item of ranked){
+    let line=item.s.replace(/[。！？!?]+$/,'').trim();
+    if(line.length>36) line=line.slice(0,35)+'…';
+    const candidate='・'+line;
+    if([...bullets,candidate].join('\n').length<=120) bullets.push(candidate);
+    if(bullets.length>=3) break;
+  }
+  if(!bullets.length){const line=cleaned.slice(0,117)+(cleaned.length>117?'…':'');return '・'+line;}
+  return bullets.join('\n');
 }
+let selectedScreenshotFile=null;
+let ocrPreviewUrl='';
+$('selectScreenshotBtn').addEventListener('click',()=>$('descriptionScreenshot').click());
+$('descriptionScreenshot').addEventListener('change',()=>{
+  const file=$('descriptionScreenshot').files?.[0]||null;
+  selectedScreenshotFile=file;
+  if(ocrPreviewUrl) URL.revokeObjectURL(ocrPreviewUrl);
+  const preview=$('ocrPreview'),status=$('ocrStatus');
+  if(!file){preview.style.display='none';$('ocrSummaryBtn').disabled=true;status.textContent='';return;}
+  ocrPreviewUrl=URL.createObjectURL(file);preview.src=ocrPreviewUrl;preview.style.display='block';
+  $('ocrSummaryBtn').disabled=false;status.textContent='画像を選択しました。「文字起こし・要約」を押してください。';status.className='status ok';
+});
+$('ocrSummaryBtn').addEventListener('click',async()=>{
+  const status=$('ocrStatus'),btn=$('ocrSummaryBtn');
+  if(!selectedScreenshotFile){status.textContent='先にスクリーンショットを選択してください。';status.className='status err';return;}
+  if(!window.Tesseract){status.textContent='文字起こし機能を読み込めませんでした。通信環境を確認してください。';status.className='status err';return;}
+  btn.disabled=true;$('selectScreenshotBtn').disabled=true;
+  let worker;
+  try{
+    status.textContent='日本語OCRを準備しています…';status.className='status loading';
+    worker=await Tesseract.createWorker('jpn+eng',1,{logger:m=>{
+      const progress=Number.isFinite(m.progress)?Math.round(m.progress*100):null;
+      if(m.status==='recognizing text') status.textContent=`文字起こし中…${progress===null?'':progress+'%'}`;
+      else if(progress!==null) status.textContent=`OCR準備中…${progress}%`;
+    }});
+    const result=await worker.recognize(selectedScreenshotFile);
+    const ocrText=String(result?.data?.text||'').trim();
+    if(!ocrText) throw new Error('画像から文字を読み取れませんでした');
+    const start=ocrText.indexOf('商品の説明');
+    let description=start>=0?ocrText.slice(start+'商品の説明'.length):ocrText;
+    const end=description.search(/(?:商品の情報|カテゴリー|ブランド|配送|発送元|出品者|購入手続き)/);
+    if(end>0) description=description.slice(0,end);
+    const summary=summarizeProductDescription(description);
+    if(!summary) throw new Error('商品の説明を要約できませんでした');
+    $('fSummary').value=summary;regeneratePostText();
+    status.textContent='文字起こしから120文字以内の箇条書きを作成しました。';status.className='status ok';
+  }catch(e){status.textContent='文字起こしに失敗しました: '+e.message;status.className='status err';}
+  finally{if(worker)await worker.terminate().catch(()=>{});btn.disabled=false;$('selectScreenshotBtn').disabled=false;}
+});
 function collectDescriptionsFromJson(value,out=[],depth=0){
   if(depth>12||value===null||value===undefined) return out;
   if(Array.isArray(value)){value.forEach(v=>collectDescriptionsFromJson(v,out,depth+1));return out;}
@@ -710,7 +773,7 @@ async function createSummaryFromProductPage(c){
     }
     const summary=summarizeProductDescription(description);
     $('fSummary').value=summary;
-    status.textContent=summary?'「商品の説明」から60文字以内で作成しました':'商品の説明を取得できませんでした。手動で入力してください。';
+    status.textContent=summary?'「商品の説明」から120文字以内の箇条書きを作成しました':'商品の説明を取得できませんでした。手動で入力してください。';
     status.className=summary?'status ok':'status err';
   }catch(e){
     const fallback=summarizeProductDescription(c.description||'');
@@ -1171,19 +1234,16 @@ function drawInfographicBase(ctx,W,H,kicker,title,subtitle){
 }
 $('generateBtn').addEventListener('click', async () => {
   const canvas=$('outputCanvas'),ctx=canvas.getContext('2d'),W=canvas.width,H=canvas.height;
-  drawInfographicBase(ctx,W,H,'PREMIUM MERCARI PICK','📱 見つけた優良iPhone','商品画像2枚・価格比較・投稿文を1枚に凝縮');
+  drawInfographicBase(ctx,W,H,'PREMIUM MERCARI PICK','📱 見つけた優良iPhone','商品画像・価格比較・投稿文を1枚に凝縮');
   const x=42,w=W-84;
 
-  // 上段: 商品画像1枚目・2枚目を横並び
+  // 上段: 商品画像1枚を大きく表示
   const imageY=132,imageH=398;drawLuxuryPanel(ctx,x,imageY,w,imageH,28);
-  const gap=14,boxW=(w-44-gap)/2,boxH=264,boxY=imageY+16;
-  const sources=[$('imgPreview').dataset.src,$('imgPreview').dataset.src2];
-  for(let i=0;i<2;i++){
-    const bx=x+15+i*(boxW+gap);ctx.fillStyle='#0a101b';roundRectPath(ctx,bx,boxY,boxW,boxH,18);ctx.fill();
-    if(sources[i]){try{const img=await loadImageViaProxy(sources[i]);const scale=Math.min(boxW/img.width,boxH/img.height),dw=img.width*scale,dh=img.height*scale;ctx.save();roundRectPath(ctx,bx,boxY,boxW,boxH,22);ctx.clip();ctx.drawImage(img,bx+(boxW-dw)/2,boxY+(boxH-dh)/2,dw,dh);ctx.restore();}catch(e){ctx.fillStyle='#94a3b8';ctx.font='21px sans-serif';ctx.textAlign='center';ctx.fillText(`${i+1}枚目を読み込めませんでした`,bx+boxW/2,boxY+boxH/2);}}
-    else{ctx.fillStyle='#94a3b8';ctx.font='21px sans-serif';ctx.textAlign='center';ctx.fillText(i===0?'商品画像を選択してください':'2枚目の画像がありません',bx+boxW/2,boxY+boxH/2);}
-    ctx.fillStyle='rgba(5,10,19,.84)';roundRectPath(ctx,bx+11,boxY+11,78,32,16);ctx.fill();ctx.strokeStyle='#e8c878';ctx.lineWidth=1.5;roundRectPath(ctx,bx+11,boxY+11,78,32,16);ctx.stroke();ctx.fillStyle='#f7d77e';ctx.font='900 14px sans-serif';ctx.textAlign='center';ctx.fillText(`${i+1}枚目`,bx+50,boxY+33);
-  }
+  const bx=x+15,boxW=w-30,boxH=264,boxY=imageY+16,imgSrc=$('imgPreview').dataset.src;
+  ctx.fillStyle='#0a101b';roundRectPath(ctx,bx,boxY,boxW,boxH,18);ctx.fill();
+  if(imgSrc){try{const img=await loadImageViaProxy(imgSrc);const scale=Math.min(boxW/img.width,boxH/img.height),dw=img.width*scale,dh=img.height*scale;ctx.save();roundRectPath(ctx,bx,boxY,boxW,boxH,18);ctx.clip();ctx.drawImage(img,bx+(boxW-dw)/2,boxY+(boxH-dh)/2,dw,dh);ctx.restore();}catch(e){ctx.fillStyle='#94a3b8';ctx.font='21px sans-serif';ctx.textAlign='center';ctx.fillText('商品画像を読み込めませんでした',bx+boxW/2,boxY+boxH/2);}}
+  else{ctx.fillStyle='#94a3b8';ctx.font='21px sans-serif';ctx.textAlign='center';ctx.fillText('商品画像を選択してください',bx+boxW/2,boxY+boxH/2);}
+  ctx.fillStyle='rgba(5,10,19,.84)';roundRectPath(ctx,bx+11,boxY+11,128,32,16);ctx.fill();ctx.strokeStyle='#e8c878';ctx.lineWidth=1.5;roundRectPath(ctx,bx+11,boxY+11,128,32,16);ctx.stroke();ctx.fillStyle='#f7d77e';ctx.font='900 14px sans-serif';ctx.textAlign='center';ctx.fillText('MERCARI PICK',bx+75,boxY+33);
   ctx.textAlign='left';ctx.fillStyle='#f8fafc';ctx.font='900 22px sans-serif';wrapText(ctx,$('fTitle').value||'商品タイトル未設定',x+22,imageY+316,w-300,28,2);
   ctx.fillStyle='#ffcf5c';ctx.font='900 38px sans-serif';ctx.textAlign='right';ctx.fillText($('fPrice').value?parsePrice($('fPrice').value).toLocaleString()+'円':'価格未設定',x+w-22,imageY+356);
   ctx.fillStyle='#7de6ec';ctx.font='bold 16px sans-serif';ctx.textAlign='left';ctx.fillText(`${$('fModel').value} / ${$('fStorage').value} / ${$('fColor').value||'カラー未設定'}`,x+22,imageY+369);
@@ -1195,7 +1255,7 @@ $('generateBtn').addEventListener('click', async () => {
 
   // 下段: ⑤投稿文（現状の配置を維持）
   const postY=892,postH=404;drawLuxuryPanel(ctx,x,postY,w,postH,26);
-  ctx.fillStyle='#e8c878';ctx.font='900 16px sans-serif';ctx.textAlign='left';ctx.fillText('POST COPY',x+26,postY+32);ctx.fillStyle='#f8fafc';ctx.font='900 24px sans-serif';ctx.fillText('⑤ 投稿文',x+26,postY+66);ctx.fillStyle='#e8edf5';ctx.font='bold 20px sans-serif';drawMultilineText(ctx,$('postText').value||buildPostText(),x+26,postY+104,w-52,28,8);
+  ctx.fillStyle='#e8c878';ctx.font='900 16px sans-serif';ctx.textAlign='left';ctx.fillText('POST COPY',x+26,postY+32);ctx.fillStyle='#f8fafc';ctx.font='900 24px sans-serif';ctx.fillText('⑤ 投稿文',x+26,postY+66);ctx.fillStyle='#e8edf5';ctx.font='bold 18px sans-serif';drawMultilineText(ctx,$('postText').value||buildPostText(),x+26,postY+100,w-52,25,11);
   ctx.fillStyle='#6f829b';ctx.font='13px sans-serif';ctx.textAlign='center';ctx.fillText('※価格・状態・保証内容は各商品ページで最新情報をご確認ください',W/2,H-20);
 
   const dataUrl=canvas.toDataURL('image/png');const out=$('outputImg'),btn=$('downloadBtn');out.src=dataUrl;out.style.display='block';btn.style.display='block';btn.onclick=()=>{const a=document.createElement('a');a.href=dataUrl;a.download='iphone_infographic.png';a.click();};
