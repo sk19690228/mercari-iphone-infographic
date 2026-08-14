@@ -669,10 +669,20 @@ function summarizeProductDescription(text){
     .replace(/出品者[\s\S]*$/,' ')
     .replace(/https?:\/\/\S+/g,' ')
     .replace(/[#＃][^\s]+/g,' ')
-    .replace(/(?:カテゴリー|ブランド|商品の状態|配送料の負担|発送元の地域|発送までの日数|購入手続きへ)[^。！？]{0,80}/g,' ')
+    .replace(/(?:カテゴリー|配送料の負担|発送元の地域|発送までの日数|購入手続きへ)\s*[:：]?/g,' ')
     .replace(/\s+/g,' ')
     .trim();
   if(!cleaned) return '';
+  const bullets=[];
+  const battery=cleaned.match(/バッテリー(?:\s*最大)?\s*容量[^\d]{0,12}(\d{2,3})\s*%/i);
+  const cycles=cleaned.match(/充放電(?:回数)?[^\d]{0,10}(\d{1,5})\s*回/i);
+  if(battery||cycles) bullets.push('・'+[battery?'バッテリー最大容量'+battery[1]+'%':'',cycles?'充放電'+cycles[1]+'回':''].filter(Boolean).join('、'));
+  const usage=cleaned.match(/((?:約)?\d+年(?:ほど|程度)?使[^。！？]*|不具合[^。！？]*(?:なし|ありませんでした)|動作[^。！？]*(?:良好|確認済み|問題なし))/i);
+  if(usage) bullets.push('・'+usage[1].replace(/[。！？]+$/,''));
+  const accessories=cleaned.match(/付属品\s*[:：]?\s*([^。！？\n]{2,50}?)(?=\s+(?:(?:約)?\d+年|即購入|ご覧|購入時)|[。！？]|$)/i);
+  if(accessories) bullets.push('・付属品：'+accessories[1].replace(/^[-・\s]+|[。！？]+$/g,''));
+  const protection=cleaned.match(/((?:ガラス)?フィルム[^。！？]{0,45}(?:ケース[^。！？]{0,45})?使用[^。！？]*)/i);
+  if(protection&&bullets.length<3) bullets.push('・'+protection[1].replace(/[。！？]+$/,''));
   const parts=cleaned
     .split(/(?<=[。！？!?])\s*|[\n\r]+|[・●■◆◇※]+/)
     .map(s=>s.replace(/^[\s,、。・:：-]+|[\s,、・:：-]+$/g,'').trim())
@@ -680,12 +690,13 @@ function summarizeProductDescription(text){
   const unique=[...new Set(parts)];
   const priority=/(傷|汚れ|美品|状態|動作|不具合|バッテリー|最大容量|付属品|箱|ケーブル|SIM|残債|利用制限|修理|交換|容量|カラー)/;
   const ranked=unique.map((s,i)=>({s,i,score:priority.test(s)?2:0})).sort((a,b)=>b.score-a.score||a.i-b.i);
-  const bullets=[];
+  if(bullets.length>3) bullets.length=3;
   for(const item of ranked){
+    if(bullets.length>=3) break;
     let line=item.s.replace(/[。！？!?]+$/,'').trim();
     if(line.length>36) line=line.slice(0,35)+'…';
     const candidate='・'+line;
-    if([...bullets,candidate].join('\n').length<=120) bullets.push(candidate);
+    if(!bullets.some(b=>b.includes(line)||line.includes(b.slice(1)))&&[...bullets,candidate].join('\n').length<=120) bullets.push(candidate);
     if(bullets.length>=3) break;
   }
   if(!bullets.length){const line=cleaned.slice(0,117)+(cleaned.length>117?'…':'');return '・'+line;}
@@ -703,6 +714,31 @@ $('descriptionScreenshot').addEventListener('change',()=>{
   ocrPreviewUrl=URL.createObjectURL(file);preview.src=ocrPreviewUrl;preview.style.display='block';
   $('ocrSummaryBtn').disabled=false;status.textContent='画像を選択しました。「文字起こし・要約」を押してください。';status.className='status ok';
 });
+async function prepareOcrImage(file){
+  let bitmap;
+  if('createImageBitmap' in window) bitmap=await createImageBitmap(file);
+  else{
+    bitmap=await new Promise((resolve,reject)=>{const img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{URL.revokeObjectURL(url);resolve(img);};img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('画像を開けませんでした'));};img.src=url;});
+  }
+  const sourceW=bitmap.width,sourceH=bitmap.height,isLandscape=sourceW/sourceH>1.25;
+  const sx=isLandscape?Math.round(sourceW*.55):0;
+  const sy=isLandscape?Math.round(sourceH*.24):0;
+  const sw=isLandscape?Math.round(sourceW*.43):sourceW;
+  const sh=isLandscape?Math.round(sourceH*.72):sourceH;
+  const scale=Math.min(3,Math.max(1.8,1800/sw));
+  const canvas=document.createElement('canvas');canvas.width=Math.round(sw*scale);canvas.height=Math.round(sh*scale);
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(bitmap,sx,sy,sw,sh,0,0,canvas.width,canvas.height);
+  const imageData=ctx.getImageData(0,0,canvas.width,canvas.height),data=imageData.data;
+  for(let i=0;i<data.length;i+=4){
+    const gray=data[i]*.299+data[i+1]*.587+data[i+2]*.114;
+    const adjusted=gray>235?255:Math.max(0,Math.min(255,(gray-128)*1.65+128));
+    data[i]=data[i+1]=data[i+2]=adjusted;
+  }
+  ctx.putImageData(imageData,0,0);
+  if(bitmap.close) bitmap.close();
+  return canvas;
+}
 $('ocrSummaryBtn').addEventListener('click',async()=>{
   const status=$('ocrStatus'),btn=$('ocrSummaryBtn');
   if(!selectedScreenshotFile){status.textContent='先にスクリーンショットを選択してください。';status.className='status err';return;}
@@ -711,14 +747,21 @@ $('ocrSummaryBtn').addEventListener('click',async()=>{
   let worker;
   try{
     status.textContent='日本語OCRを準備しています…';status.className='status loading';
+    const processedImage=await prepareOcrImage(selectedScreenshotFile);
+    $('ocrPreview').src=processedImage.toDataURL('image/jpeg',.94);
+    status.textContent='「商品の説明」部分を切り抜き、読みやすく補正しました…';
     worker=await Tesseract.createWorker('jpn+eng',1,{logger:m=>{
       const progress=Number.isFinite(m.progress)?Math.round(m.progress*100):null;
       if(m.status==='recognizing text') status.textContent=`文字起こし中…${progress===null?'':progress+'%'}`;
       else if(progress!==null) status.textContent=`OCR準備中…${progress}%`;
     }});
-    const result=await worker.recognize(selectedScreenshotFile);
+    await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
+    const result=await worker.recognize(processedImage);
     const ocrText=String(result?.data?.text||'').trim();
     if(!ocrText) throw new Error('画像から文字を読み取れませんでした');
+    const japaneseCount=(ocrText.match(/[ぁ-んァ-ヶ一-龯]/g)||[]).length;
+    const productSignals=(ocrText.match(/バッテリー|充放電|付属品|不具合|モデル|ブランド|使用|SIM|iPhone/gi)||[]).length;
+    if(japaneseCount<18||productSignals<2) throw new Error('認識精度が低いため反映しませんでした。「商品の説明」部分が大きく写った画像を選択してください');
     const start=ocrText.indexOf('商品の説明');
     let description=start>=0?ocrText.slice(start+'商品の説明'.length):ocrText;
     const end=description.search(/(?:商品の情報|カテゴリー|ブランド|配送|発送元|出品者|購入手続き)/);
@@ -726,7 +769,7 @@ $('ocrSummaryBtn').addEventListener('click',async()=>{
     const summary=summarizeProductDescription(description);
     if(!summary) throw new Error('商品の説明を要約できませんでした');
     $('fSummary').value=summary;regeneratePostText();
-    status.textContent='文字起こしから120文字以内の箇条書きを作成しました。';status.className='status ok';
+    status.textContent='補正した画像から120文字以内の箇条書きを作成しました。';status.className='status ok';
   }catch(e){status.textContent='文字起こしに失敗しました: '+e.message;status.className='status err';}
   finally{if(worker)await worker.terminate().catch(()=>{});btn.disabled=false;$('selectScreenshotBtn').disabled=false;}
 });
@@ -748,15 +791,29 @@ function extractMercariDescription(doc,html,ogDescription){
   const visible=doc.cloneNode(true);
   visible.querySelectorAll('script,style,noscript,svg').forEach(el=>el.remove());
   const bodyText=visible.body?visible.body.textContent.replace(/\s+/g,' ').trim():'';
-  const start=bodyText.indexOf('商品の説明');
-  if(start>=0){
-    const after=bodyText.slice(start+'商品の説明'.length);
-    const endMatch=after.search(/(?:商品の情報|出品者|配送|カテゴリー|ブランド|購入手続きへ)/);
-    candidates.unshift(endMatch>0?after.slice(0,endMatch):after.slice(0,1600));
+  [...visible.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter(el=>el.textContent.trim()==='商品の説明').forEach(heading=>{
+    let container=heading.parentElement;
+    while(container&&container!==visible.body&&container.textContent.trim().length<80) container=container.parentElement;
+    const section=container?container.textContent.replace(/\s+/g,' ').trim():'';
+    const after=section.slice(section.indexOf('商品の説明')+'商品の説明'.length);
+    const end=after.search(/(?:商品の情報|商品の特徴|出品者|購入手続きへ)/);
+    candidates.unshift(end>0?after.slice(0,end):after.slice(0,1800));
+  });
+  let from=0;
+  while((from=bodyText.indexOf('商品の説明',from))>=0){
+    const after=bodyText.slice(from+'商品の説明'.length);const end=after.search(/(?:商品の情報|商品の特徴|出品者|購入手続きへ)/);
+    candidates.push(end>0?after.slice(0,end):after.slice(0,1800));from+=6;
   }
   if(ogDescription) candidates.push(ogDescription);
-  return candidates.map(v=>String(v||'').trim())
-    .find(v=>v.length>=5&&!/(?:itemInformation|pageHeading|持ち物詳細|"[A-Za-z][A-Za-z0-9_]+"\s*:)/.test(v))||'';
+  const bad=/(?:itemInformation|pageHeading|持ち物詳細|メルカード|キャリア決済|あと払い|支払い方法|公式サイト|"[A-Za-z][A-Za-z0-9_]+"\s*:)/i;
+  const scored=candidates.map(v=>String(v||'').replace(/^商品の説明\s*/,'').trim()).filter(v=>v.length>=5&&!bad.test(v)).map(v=>{
+    let score=Math.min(v.length,600)/30;
+    if(/バッテリー|充放電|付属品|不具合|動作|フィルム|ケース|SIMピン|使用して/.test(v)) score+=35;
+    if(/ブランド|モデル|容量|カラー/.test(v)) score+=8;
+    if(/新品、未使用|お得|ポイント/.test(v)) score-=15;
+    return {v,score};
+  }).sort((a,b)=>b.score-a.score);
+  return scored[0]?.v||'';
 }
 async function createSummaryFromProductPage(c){
   const status=$('summaryStatus');
@@ -956,7 +1013,7 @@ function triState(text,yesPattern,noPattern){
 function parseCandidateFromMail(raw){
   const text=[
     pick(raw,['title','name'],''),
-    pick(raw,['description','bodyText','context'],''),
+    pick(raw,['bodyText','description','context'],''),
     pick(raw,['condition'],''),
     pick(raw,['sourceSubject'],'')
   ].join(' ').replace(/\s+/g,' ');
