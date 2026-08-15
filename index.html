@@ -68,15 +68,15 @@
   .candidatePrice{font-size:17px;font-weight:800;color:var(--bad);}
   .badge{display:inline-block;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:800;background:var(--accent);color:#fff;margin-bottom:6px;}
   .badge.warn{background:var(--warn);}.badge.bad{background:var(--bad);}
-  .candidateActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;}
-  .candidateActions button{padding:9px;font-size:12px;margin:0;width:100%;}
+  .adoptBtn{display:inline-block;width:auto;margin:8px 0 0;padding:4px 10px;border-radius:999px;font-size:10px;line-height:1.35;}
   .emptyBox{padding:18px;text-align:center;color:var(--sub);font-size:12px;border:1px dashed var(--border);border-radius:12px;}
   details.settings{margin-top:10px;} details.settings summary{font-size:12px;font-weight:700;cursor:pointer;color:var(--accent);}
   .bulkControls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
   .progressBox{margin-top:10px;padding:10px;border-radius:10px;background:var(--panel2);font-size:11px;line-height:1.65;white-space:pre-wrap;max-height:220px;overflow:auto;}
   .apiRequired{border-left:4px solid var(--warn);padding-left:10px;}
-  .popPreview{margin-top:12px;padding:12px;text-align:center;border:3px solid #111827;border-radius:14px;background:#fff36d;color:#111827;font-size:18px;font-weight:900;letter-spacing:.04em;transform:rotate(-1deg);box-shadow:4px 4px 0 #111827;}
-  #ocrPreview{width:100%;max-height:300px;object-fit:contain;border-radius:12px;border:1px solid var(--border);background:var(--panel2);margin-top:8px;display:none;}
+  .detailsAction{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start;}
+  .detailsAction textarea{min-height:120px;}
+  .detailsAction .btn-secondary{width:auto;margin:0;padding:10px 14px;}
 </style>
 </head>
 <body>
@@ -89,7 +89,6 @@
 
   <div class="card">
     <h2>① Gmailのメルカリ新着通知を取得</h2>
-    <div class="hint">メルカリで保存した検索条件の新着通知メールを、ボタンを押した時だけGAS経由で確認します。定期トリガー、外部API、検索結果ページの自動巡回は使用しません。</div>
     <details class="settings">
       <summary>メール取得・選定条件</summary>
       <div class="row2">
@@ -100,8 +99,7 @@
         <div><label>取得する最大商品数</label><input type="number" id="mailMaxItems" value="40" min="1" max="100"></div>
         <div><label>最低バッテリー（記載時）</label><input type="number" id="searchMinBattery" value="80" min="0" max="100"></div>
       </div>
-      <label>おすすめ基準の最低割引率(%)</label>
-      <input type="number" id="searchMinDiscount" value="0" min="-50" max="90">
+      <label><input type="checkbox" id="excludeAboveAvg" checked> 中古平均価格と比較して高い商品は除外</label>
       <label><input type="checkbox" id="trustSavedSearch" checked> メール元の保存検索条件を信頼し、メール・商品ページで確認できない項目は除外しない</label>
       <label><input type="checkbox" id="searchSimFree" checked> SIMロックありと明記された商品を除外</label>
       <label><input type="checkbox" id="excludeRisk" checked> ジャンク・空箱・部品取り等を除外</label>
@@ -115,7 +113,6 @@
       <button class="btn-secondary" id="testMercariApiBtn" type="button">Gmail接続をテスト</button>
       <button class="btn-secondary" id="resetMailHistoryBtn" type="button">メール処理履歴をリセット</button>
       <div class="status" id="mercariApiStatus"></div>
-      <div class="hint">GASは、このGoogleアカウントのGmailだけを確認します。Yahoo!メールで受信している場合は、メルカリ通知をGmailへ転送してください。設定値はこの端末内に保存されます。</div>
     </details>
     <button class="btn-primary" id="bulkSearchBtn">新着通知メールを検索・おすすめ決定</button>
     <div class="status" id="bulkStatus"></div>
@@ -126,8 +123,6 @@
   <div class="card">
     <h2>② 通知メールから取得した候補を比較</h2>
     <div id="candidateList"></div>
-    <button class="btn-secondary" id="clearCandidatesBtn">候補をすべて削除</button>
-    <div class="hint">価格差だけでなく、割引率・状態・バッテリー・説明情報の充実度を合わせて自動順位付けします。メール取得完了後、1位の商品が③へ自動反映されます。最終判断は商品ページで確認してください。</div>
   </div>
 
   <div class="card">
@@ -139,6 +134,10 @@
     <label>メルカリアフィリエイトリンク</label>
     <div class="fieldAction"><input type="text" id="mercariAffiliateUrl" placeholder="例: https://af.mercari.com/..."><button class="btn-secondary" id="clearMercariAffiliateBtn" type="button">クリア</button></div>
     <img id="imgPreview" alt="商品画像プレビュー">
+    <label>商品詳細</label>
+    <div class="detailsAction"><textarea id="fProductDetails" rows="6" placeholder="商品ページの説明や状態、色、付属品などを入力してください"></textarea><button class="btn-secondary" id="clearProductDetailsBtn" type="button">クリア</button></div>
+    <button class="btn-primary" id="applyProductDetailsBtn" type="button">情報反映</button>
+    <div class="status" id="productDetailsStatus"></div>
     <label>出品価格（円）</label>
     <input type="text" id="fPrice" placeholder="例: 48000">
 
@@ -173,14 +172,6 @@
     <label>商品紹介文（商品説明から自動生成・120文字以内）</label>
     <textarea id="fSummary" maxlength="120" rows="4" placeholder="商品の状態・動作・付属品などを箇条書きで自動要約します"></textarea>
     <div class="status" id="summaryStatus"></div>
-    <label>商品の説明スクリーンショット</label>
-    <input type="file" id="descriptionScreenshot" accept="image/png,image/jpeg,image/webp" hidden>
-    <button class="btn-secondary" id="selectScreenshotBtn" type="button">スクリーンショットを選択</button>
-    <img id="ocrPreview" alt="選択したスクリーンショット">
-    <button class="btn-primary" id="ocrSummaryBtn" type="button" disabled>文字起こし・要約</button>
-    <div class="status" id="ocrStatus"></div>
-    <label>バッテリー最大容量(%) ※不明なら空欄可</label>
-    <input type="text" id="fBattery" placeholder="例: 89">
     <div class="avgBox">
       <span id="amazonSearchLabel">検索キーワード: -</span>
       <a id="amazonSearchLink" href="#" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600;text-decoration:none;">Amazonで検索 ↗</a>
@@ -189,18 +180,15 @@
     <input type="text" id="fAmazonPrice" inputmode="numeric" placeholder="例: 161489">
     <label>アマゾンアフィリエイトリンク</label>
     <div class="fieldAction"><input type="text" id="amazonAffiliateUrl" placeholder="例: https://amzn.to/..."><button class="btn-secondary" id="clearAmazonAffiliateBtn" type="button">クリア</button></div>
-    <div class="hint">上の「Amazonで検索」から該当するAmazon整備済品を確認し、表示価格を手入力してください。入力した価格は⑤「投稿文をコピー」に自動反映されます。</div>
   </div>
 
   <div class="card">
     <h2>④ グラフのプレビュー（自動計算）</h2>
-    <canvas id="chart" width="600" height="520"></canvas>
-    <div class="popPreview" id="conditionPopPreview">商品状態：未設定</div>
-    <div class="hint">出品価格を、中古平均価格・Amazon整備済品価格と金額ベースで比較します。商品の状態はPOP風ラベルで表示します。</div>
+    <canvas id="chart" width="600" height="360"></canvas>
   </div>
 
   <div class="card">
-    <h2>⑦ Xポスト用画像を生成</h2>
+    <h2>⑤ Xポスト用画像を生成</h2>
     <button class="btn-primary" id="generateBtn">インフォグラフィック画像を作成</button>
     <img id="outputImg" alt="商品画像・商品価格比較・投稿文のインフォグラフィック">
     <button class="btn-secondary" id="downloadBtn" style="display:none;">画像をダウンロード</button>
@@ -208,18 +196,7 @@
   </div>
 
   <div class="card">
-    <h2>⑤ 投稿文をコピー</h2>
-    <label>商品情報・メルカリ価格・Amazon整備済品価格の固定テンプレート</label>
-    <textarea id="postText" rows="9" style="font-size:14px;"></textarea>
-    <button class="btn-secondary" id="regenPostBtn">テキストを再生成</button>
-    <button class="btn-primary" id="copyPostBtn">コピー</button>
-    <div class="status" id="copyPostStatus"></div>
-  </div>
-
-  <div class="card">
-    <h2>⑥ PR表記・アフィリエイトリンク</h2>
-    <div class="hint">③で入力したメルカリ／Amazonのアフィリエイトリンクを使用します。</div>
-    <label>PR文</label>
+    <h2>⑤ PR表記・アフィリエイトリンク</h2>
     <textarea id="affiliateText" rows="7" style="font-size:14px;"></textarea>
     <button class="btn-secondary" id="regenAffiliateBtn">テキストを再生成</button>
     <button class="btn-primary" id="copyAffiliateBtn">コピー</button>
@@ -229,20 +206,15 @@
 
   <div class="card">
     <h2>📊 中古平均価格一覧（iPhone 16シリーズ）</h2>
-    <div class="hint">アプリ内蔵の参考価格（2026年7月時点・ムスビー基準）を表示しています。実勢に合わせて上書きし、GASに保存すると同じGAS設定を使う端末へ反映できます。</div>
     <div id="avgPriceRegistryList"></div>
-    <button class="btn-secondary" id="copyAvgPriceJsonBtn">共有用JSONをコピー</button>
-    <button class="btn-primary" id="saveAvgPriceToGasBtn">GASに保存</button>
     <div class="status" id="avgPriceStatus"></div>
   </div>
 
   <div class="footerNote">
-    商品候補は端末内で処理し、中古平均価格の設定をGASへ保存します。Amazon価格は③で手入力します。<br>
     相場データは2026年7月時点の参考値です。新着取得は、ボタンを押した時だけGmailのメルカリ通知メールを確認します。
   </div>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -434,8 +406,6 @@ function drawPreview(){
   drawPriceComparison(ctx, 28, 96, canvas.width-56, data, {labelColor:'#f8fafc', subColor:'#d8e1ed', trackColor:'rgba(255,255,255,.11)'});
   ctx.fillStyle='#e8c878';ctx.font='900 14px sans-serif';ctx.textAlign='left';ctx.fillText('PREMIUM PRICE CHECK',28,32);
   ctx.fillStyle='#f8fafc';ctx.font='900 22px sans-serif';ctx.fillText('3つの価格をスマート比較',28,64);
-  drawPopLabel(ctx, 24, 390, canvas.width-48, '商品状態：'+($('fCondition').value||'未設定'));
-  $('conditionPopPreview').textContent='商品状態：'+($('fCondition').value||'未設定');
 }
 function drawPriceComparison(ctx,x,y,width,data,opts={}){
   const max=Math.max(...data.map(d=>d.value),1);
@@ -454,7 +424,7 @@ function drawPopLabel(ctx,x,y,width,text,fontSize=22,height=56){
   roundRectPath(ctx,-width/2,-height/2,width,height,14);ctx.fill();ctx.stroke();
   ctx.fillStyle='#111827';ctx.font='900 '+fontSize+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,0,1);ctx.restore();
 }
-['fPrice','fAmazonPrice','fCondition'].forEach(id => {
+['fPrice','fAmazonPrice'].forEach(id => {
   $(id).addEventListener('input', drawPreview);
   $(id).addEventListener('change', drawPreview);
 });
@@ -492,13 +462,15 @@ function renderAvgPriceRegistryUI(){
       avgPriceOverrides[combo] = v;
       if(v) PRICE_TABLE[combo] = Number(v);
       updateAvgPriceDisplay();
+      scheduleAvgPriceAutoSave();
     });
   });
 }
 renderAvgPriceRegistryUI();
 
 // 同じ階層にmercari-avg-prices.jsonがあれば、内蔵の参考価格より優先して読み込む
-(async function loadSharedAvgPrices(){
+const sharedAvgPricesPromise=(async function loadSharedAvgPrices(){
+  const statusEl=$('avgPriceStatus');
   try {
     const res = await fetch('./mercari-avg-prices.json', { cache: 'no-store' });
     if(res.ok){
@@ -511,42 +483,50 @@ renderAvgPriceRegistryUI();
         });
         renderAvgPriceRegistryUI();
         updateAvgPriceDisplay();
+        statusEl.textContent='中古平均価格を自動取得しました';statusEl.className='status ok';
+        return true;
       }
     }
   } catch(e){ /* ファイルが無ければ内蔵値のまま */ }
+  statusEl.textContent='内蔵の中古平均価格を使用しています';statusEl.className='status loading';
+  return false;
 })();
 
-$('copyAvgPriceJsonBtn').addEventListener('click', () => {
+function buildAvgPricePayload(){
   const cleaned = {};
   avgPriceCombos.forEach(combo => {
     const v = avgPriceOverrides[combo] ?? PRICE_TABLE[combo];
     if(v) cleaned[combo] = Number(v);
   });
-  copyTextToClipboard(JSON.stringify(cleaned, null, 2), 'avgPriceStatus');
-});
+  return cleaned;
+}
 
-$('saveAvgPriceToGasBtn').addEventListener('click', async () => {
-  const statusEl = $('avgPriceStatus');
-  statusEl.textContent = 'GASに保存中...';
-  statusEl.className = 'status loading';
+async function autoSaveAvgPricesToGas({silent=false}={}){
+  const statusEl=$('avgPriceStatus'),cfg=getMercariApiSettings();
+  if(!cfg.url||!cfg.token){
+    if(!silent){statusEl.textContent='GAS設定後に中古平均価格を自動保存します';statusEl.className='status loading';}
+    return false;
+  }
+  statusEl.textContent='中古平均価格をGASへ自動保存中...';statusEl.className='status loading';
   try {
-    const cleaned = {};
-    avgPriceCombos.forEach(combo => {
-      const v = avgPriceOverrides[combo] ?? PRICE_TABLE[combo];
-      if(v) cleaned[combo] = Number(v);
-    });
+    const cleaned=buildAvgPricePayload();
     await callGmailRelay('saveAvgPrices', { data: JSON.stringify(cleaned) });
     avgPriceOverrides = { ...cleaned };
-    statusEl.textContent = 'GASに保存しました';
-    statusEl.className = 'status ok';
+    statusEl.textContent='中古平均価格を自動取得・GASへ保存しました';statusEl.className='status ok';
+    return true;
   } catch(e){
-    statusEl.textContent = e.message;
-    statusEl.className = 'status err';
+    statusEl.textContent='GASへの自動保存に失敗しました（'+e.message+'）';statusEl.className='status err';
+    return false;
   }
-});
+}
+let avgPriceAutoSaveTimer=null;
+function scheduleAvgPriceAutoSave(){
+  clearTimeout(avgPriceAutoSaveTimer);
+  avgPriceAutoSaveTimer=setTimeout(()=>autoSaveAvgPricesToGas(),700);
+}
 
 
-// ========== ⑤ 投稿文生成・コピー ==========
+// ========== X画像用投稿文生成 ==========
 const BLOCKED_SUMMARY_PATTERN=/(?:メルカリでお得|新品\s*[\/／]\s*未使用品も多数|支払いはクレジットカード|クレジットカード|キャリア決済|メルカード|あと払い|支払い方法)/i;
 function sanitizeSummaryText(text){
   return String(text||'')
@@ -570,14 +550,13 @@ function buildPostText(){
 function regeneratePostText(){
   const sanitized=sanitizeSummaryText($('fSummary').value);
   if(sanitized!==$('fSummary').value.trim()) $('fSummary').value=sanitized;
-  $('postText').value = buildPostText();
+  return buildPostText();
 }
-$('regenPostBtn').addEventListener('click', regeneratePostText);
 $('fAmazonPrice').addEventListener('input', regeneratePostText);
 ['fTitle','fPrice','fModel','fStorage','fSummary'].forEach(id=>$(id).addEventListener('input',regeneratePostText));
 regeneratePostText();
 
-// ========== ⑥ PR表記・アフィリエイトリンク ==========
+// ========== ⑤ PR表記・アフィリエイトリンク ==========
 function buildAffiliateText(){
   const mercariUrl = $('mercariAffiliateUrl').value.trim() || '(メルカリアフィリエイトリンク未入力)';
   const amazonUrl = $('amazonAffiliateUrl').value.trim() || '(アマゾンアフィリエイトリンク未入力)';
@@ -628,7 +607,6 @@ async function copyTextToClipboard(text, statusId){
 function copyTextFrom(textareaId, statusId){
   return copyTextToClipboard($(textareaId).value, statusId);
 }
-$('copyPostBtn').addEventListener('click', () => copyTextFrom('postText','copyPostStatus'));
 $('copyAffiliateBtn').addEventListener('click', () => copyTextFrom('affiliateText','copyAffiliateStatus'));
 
 // ========== ① 取得 ==========
@@ -663,7 +641,7 @@ function extractMercariUrl(value){
 
 function extractSmartphoneColor(text){
   const source = String(text || '').replace(/\s+/g,' ');
-  const labeled = source.match(/スマートフォン\s*カラー\s*[:：]\s*([^|｜,、\n\r<>{}\[\]]{1,40})/i);
+  const labeled = source.match(/スマートフォン\s*カラー\s*[:：]\s*([^|｜,、。！？\n\r<>{}\[\]]{1,40})/i);
   if(labeled){
     return labeled[1]
       .replace(/\s*(?:容量|SIMフリー|バッテリー|画面割れ|機能不良).*$/i,'')
@@ -703,7 +681,7 @@ function summarizeProductDescription(text){
     .filter(s=>s.length>=4&&!/(ご覧いただき|よろしくお願い|即購入|コメント|プロフィール|購入前に)/.test(s)&&!BLOCKED_SUMMARY_PATTERN.test(s));
   const unique=[...new Set(parts)];
   const priority=/(傷|汚れ|美品|状態|動作|不具合|バッテリー|最大容量|付属品|箱|ケーブル|SIM|残債|利用制限|修理|交換|容量|カラー)/;
-  const ranked=unique.map((s,i)=>({s,i,score:priority.test(s)?2:0})).sort((a,b)=>b.score-a.score||a.i-b.i);
+  const ranked=unique.map((s,i)=>({s,i,score:(priority.test(s)?2:0)+(/傷|汚れ|不具合|動作|状態/.test(s)?3:0)})).sort((a,b)=>b.score-a.score||a.i-b.i);
   if(bullets.length>3) bullets.length=3;
   for(const item of ranked){
     if(bullets.length>=3) break;
@@ -719,77 +697,50 @@ function summarizeProductDescription(text){
   }
   return sanitizeSummaryText(bullets.join('\n'));
 }
-let selectedScreenshotFile=null;
-let ocrPreviewUrl='';
-$('selectScreenshotBtn').addEventListener('click',()=>$('descriptionScreenshot').click());
-$('descriptionScreenshot').addEventListener('change',()=>{
-  const file=$('descriptionScreenshot').files?.[0]||null;
-  selectedScreenshotFile=file;
-  if(ocrPreviewUrl) URL.revokeObjectURL(ocrPreviewUrl);
-  const preview=$('ocrPreview'),status=$('ocrStatus');
-  if(!file){preview.style.display='none';$('ocrSummaryBtn').disabled=true;status.textContent='';return;}
-  ocrPreviewUrl=URL.createObjectURL(file);preview.src=ocrPreviewUrl;preview.style.display='block';
-  $('ocrSummaryBtn').disabled=false;status.textContent='画像を選択しました。「文字起こし・要約」を押してください。';status.className='status ok';
-});
-async function prepareOcrImage(file){
-  let bitmap;
-  if('createImageBitmap' in window) bitmap=await createImageBitmap(file);
-  else{
-    bitmap=await new Promise((resolve,reject)=>{const img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{URL.revokeObjectURL(url);resolve(img);};img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('画像を開けませんでした'));};img.src=url;});
-  }
-  const sourceW=bitmap.width,sourceH=bitmap.height,isLandscape=sourceW/sourceH>1.25;
-  const sx=isLandscape?Math.round(sourceW*.55):0;
-  const sy=isLandscape?Math.round(sourceH*.24):0;
-  const sw=isLandscape?Math.round(sourceW*.43):sourceW;
-  const sh=isLandscape?Math.round(sourceH*.72):sourceH;
-  const scale=Math.min(3,Math.max(1.8,1800/sw));
-  const canvas=document.createElement('canvas');canvas.width=Math.round(sw*scale);canvas.height=Math.round(sh*scale);
-  const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
-  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(bitmap,sx,sy,sw,sh,0,0,canvas.width,canvas.height);
-  const imageData=ctx.getImageData(0,0,canvas.width,canvas.height),data=imageData.data;
-  for(let i=0;i<data.length;i+=4){
-    const gray=data[i]*.299+data[i+1]*.587+data[i+2]*.114;
-    const adjusted=gray>235?255:Math.max(0,Math.min(255,(gray-128)*1.65+128));
-    data[i]=data[i+1]=data[i+2]=adjusted;
-  }
-  ctx.putImageData(imageData,0,0);
-  if(bitmap.close) bitmap.close();
-  return canvas;
+function detectConditionFromProductDetails(text){
+  const source=String(text||'').replace(/\s+/g,' ');
+  const rules=[
+    ['新品、未使用',/新品[、・\s\/／]*未使用|新品未使用/],
+    ['未使用に近い',/未使用に近い/],
+    ['目立った傷や汚れなし',/目立った傷や汚れ(?:は)?(?:なし|ありません)/],
+    ['やや傷や汚れあり',/やや傷や汚れ(?:が)?あり/],
+    ['全体的に状態が悪い',/全体的に状態が悪い/],
+    ['傷や汚れあり',/傷や汚れ(?:が)?あり/]
+  ];
+  return rules.find(([,pattern])=>pattern.test(source))?.[0]||'';
 }
-$('ocrSummaryBtn').addEventListener('click',async()=>{
-  const status=$('ocrStatus'),btn=$('ocrSummaryBtn');
-  if(!selectedScreenshotFile){status.textContent='先にスクリーンショットを選択してください。';status.className='status err';return;}
-  if(!window.Tesseract){status.textContent='文字起こし機能を読み込めませんでした。通信環境を確認してください。';status.className='status err';return;}
-  btn.disabled=true;$('selectScreenshotBtn').disabled=true;
-  let worker;
-  try{
-    status.textContent='日本語OCRを準備しています…';status.className='status loading';
-    const processedImage=await prepareOcrImage(selectedScreenshotFile);
-    $('ocrPreview').src=processedImage.toDataURL('image/jpeg',.94);
-    status.textContent='「商品の説明」部分を切り抜き、読みやすく補正しました…';
-    worker=await Tesseract.createWorker('jpn+eng',1,{logger:m=>{
-      const progress=Number.isFinite(m.progress)?Math.round(m.progress*100):null;
-      if(m.status==='recognizing text') status.textContent=`文字起こし中…${progress===null?'':progress+'%'}`;
-      else if(progress!==null) status.textContent=`OCR準備中…${progress}%`;
-    }});
-    await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
-    const result=await worker.recognize(processedImage);
-    const ocrText=String(result?.data?.text||'').trim();
-    if(!ocrText) throw new Error('画像から文字を読み取れませんでした');
-    const japaneseCount=(ocrText.match(/[ぁ-んァ-ヶ一-龯]/g)||[]).length;
-    const productSignals=(ocrText.match(/バッテリー|充放電|付属品|不具合|モデル|ブランド|使用|SIM|iPhone/gi)||[]).length;
-    if(japaneseCount<18||productSignals<2) throw new Error('認識精度が低いため反映しませんでした。「商品の説明」部分が大きく写った画像を選択してください');
-    const start=ocrText.indexOf('商品の説明');
-    let description=start>=0?ocrText.slice(start+'商品の説明'.length):ocrText;
-    const end=description.search(/(?:商品の情報|カテゴリー|ブランド|配送|発送元|出品者|購入手続き)/);
-    if(end>0) description=description.slice(0,end);
-    const summary=summarizeProductDescription(description);
-    if(!summary) throw new Error('商品の説明を要約できませんでした');
-    $('fSummary').value=summary;regeneratePostText();
-    status.textContent='補正した画像から120文字以内の箇条書きを作成しました。';status.className='status ok';
-  }catch(e){status.textContent='文字起こしに失敗しました: '+e.message;status.className='status err';}
-  finally{if(worker)await worker.terminate().catch(()=>{});btn.disabled=false;$('selectScreenshotBtn').disabled=false;}
+function summarizeManualProductDetails(text){
+  const automatic=summarizeProductDescription(text);
+  if(automatic) return automatic;
+  const parts=decodeEscapedDescriptionText(text)
+    .split(/(?<=[。！？!?])\s*|[\n\r]+|[・●■◆◇※]+/)
+    .map(value=>value.replace(/^[\s,、。・:：-]+|[\s,、。・:：-]+$/g,'').trim())
+    .filter(value=>value.length>=3&&!BLOCKED_SUMMARY_PATTERN.test(value));
+  const bullets=[];
+  for(const part of [...new Set(parts)]){
+    let line=part.replace(/[。！？!?]+$/,'');
+    if(line.length>36) line=line.slice(0,35)+'…';
+    const candidate='・'+line;
+    if([...bullets,candidate].join('\n').length>120) continue;
+    bullets.push(candidate);if(bullets.length>=3)break;
+  }
+  return sanitizeSummaryText(bullets.join('\n'));
+}
+function reflectProductDetails(){
+  const status=$('productDetailsStatus'),details=$('fProductDetails').value.trim();
+  if(!details){status.textContent='商品詳細を入力してください';status.className='status err';return;}
+  const reflected=[];
+  const color=extractSmartphoneColor(details);if(color){$('fColor').value=color;reflected.push('色');}
+  const condition=detectConditionFromProductDetails(details);if(condition){$('fCondition').value=condition;reflected.push('商品状態');}
+  const summary=summarizeManualProductDetails(details);if(summary){$('fSummary').value=summary;reflected.push('商品紹介文');}
+  regeneratePostText();drawPreview();
+  status.textContent=reflected.length?reflected.join('・')+'へ反映しました':'反映できる情報を確認できませんでした';
+  status.className=reflected.length?'status ok':'status err';
+}
+$('clearProductDetailsBtn').addEventListener('click',()=>{
+  $('fProductDetails').value='';$('productDetailsStatus').textContent='';$('fProductDetails').focus();
 });
+$('applyProductDetailsBtn').addEventListener('click',reflectProductDetails);
 function collectDescriptionsFromJson(value,out=[],depth=0){
   if(depth>12||value===null||value===undefined) return out;
   if(Array.isArray(value)){value.forEach(v=>collectDescriptionsFromJson(v,out,depth+1));return out;}
@@ -889,7 +840,11 @@ async function createSummaryFromProductPage(c){
         for(const source of sources){summary=summarizeProductDescription(source);if(summary){c.description=source;break;}}
       }catch(e){if(!detailError)detailError=e.message;}
     }
-    $('fSummary').value=summary;saveCandidates();
+    $('fSummary').value=summary;
+    if(c.description)$('fProductDetails').value=c.description;
+    if(c.color)$('fColor').value=c.color;
+    if(c.condition)$('fCondition').value=c.condition;
+    saveCandidates();drawPreview();
     status.textContent=summary?'「商品の説明」本文から120文字以内の箇条書きを作成しました':'商品の説明本文を取得できませんでした'+(detailError?'（'+detailError+'）':'');
     status.className=summary?'status ok':'status err';
   }catch(e){$('fSummary').value='';status.textContent='商品紹介文の生成に失敗しました（'+e.message+'）';status.className='status err';}
@@ -949,16 +904,15 @@ function parseMercariHtml(html, url){
 
 function candidateScore(c){
   if(!c.avgPrice || !c.price || !c.model.startsWith('iPhone 16')) return -999;
-  if($('excludeRisk').checked && c.riskFlags.length) return -500;
+  if($('excludeAboveAvg').checked&&c.price>c.avgPrice) return -700;
+  if($('excludeRisk').checked && (c.riskFlags||[]).length) return -500;
   const minBattery = Number($('searchMinBattery').value || 0);
-  const minDiscount = Number($('searchMinDiscount').value || 0);
   let score = Math.max(-20, Math.min(40, c.discountRate || 0)) * 1.5;
   const cond = computeConditionScore(c.condition);
   score += cond === null ? 5 : cond*4;
   if(c.battery === null) score += 4;
   else score += Math.max(0, Math.min(15, (c.battery-75)*0.6));
   if(c.battery !== null && c.battery < minBattery) score -= 25;
-  if((c.discountRate || -999) < minDiscount) score -= 20;
   if(c.image) score += 3;
   if(c.condition) score += 2;
   return Math.round(score*10)/10;
@@ -989,24 +943,27 @@ function saveMercariApiSettings(){
   const v=getMercariApiSettings();
   localStorage.setItem('mercariApiUrl',v.url);
   localStorage.setItem('mercariApiToken',v.token);
-  ['mailSearchDays','mailMaxThreads','mailMaxItems','searchMinBattery','searchMinDiscount'].forEach(id=>{
+  ['mailSearchDays','mailMaxThreads','mailMaxItems','searchMinBattery'].forEach(id=>{
     localStorage.setItem(id,$(id).value);
   });
-  ['trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded','markProcessed'].forEach(id=>{
+  ['excludeAboveAvg','trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded','markProcessed'].forEach(id=>{
     localStorage.setItem(id,$(id).checked?'1':'0');
   });
 }
 $('mercariApiUrl').value=localStorage.getItem('mercariApiUrl')||'';
 $('mercariApiToken').value=localStorage.getItem('mercariApiToken')||'';
-['mailSearchDays','mailMaxThreads','mailMaxItems','searchMinBattery','searchMinDiscount'].forEach(id=>{
+['mailSearchDays','mailMaxThreads','mailMaxItems','searchMinBattery'].forEach(id=>{
   const saved=localStorage.getItem(id); if(saved!==null) $(id).value=saved;
 });
-['trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded','markProcessed'].forEach(id=>{
+['excludeAboveAvg','trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded','markProcessed'].forEach(id=>{
   const saved=localStorage.getItem(id); if(saved!==null) $(id).checked=saved==='1';
 });
-['mercariApiUrl','mercariApiToken','mailSearchDays','mailMaxThreads','mailMaxItems','searchMinBattery','searchMinDiscount',
- 'trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded','markProcessed']
+['mercariApiUrl','mercariApiToken','mailSearchDays','mailMaxThreads','mailMaxItems','searchMinBattery',
+ 'excludeAboveAvg','trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded','markProcessed']
  .forEach(id=>$(id).addEventListener('change',saveMercariApiSettings));
+['mercariApiUrl','mercariApiToken'].forEach(id=>$(id).addEventListener('change',async()=>{
+  await sharedAvgPricesPromise;scheduleAvgPriceAutoSave();
+}));
 
 function callGmailRelay(action,params={}){
   const cfg=getMercariApiSettings();
@@ -1106,7 +1063,8 @@ function evaluateMailCandidate(c){
   if(!c.model.startsWith('iPhone 16')) reasons.push('iPhone 16シリーズとして判定できず');
   if(!c.storage) reasons.push('容量を判定できず');
   if(!c.price) reasons.push('価格を取得できず');
-  if($('excludeRisk').checked&&c.riskFlags.length) reasons.push('注意語句: '+c.riskFlags.join('・'));
+  if($('excludeAboveAvg').checked&&c.avgPrice&&c.price>c.avgPrice) reasons.push('中古平均価格より高い');
+  if($('excludeRisk').checked&&(c.riskFlags||[]).length) reasons.push('注意語句: '+c.riskFlags.join('・'));
   if(c.functionalIssue) reasons.push('機能不良の記載あり');
   if($('searchSimFree').checked){
     if(c.simFree===false) reasons.push('SIMロックあり');
@@ -1130,8 +1088,9 @@ async function testMercariApi(){
   el.textContent='Gmail接続を確認中...'; el.className='status loading';
   try{
     const r=await callGmailRelay('health');
-    await loadAppConfigFromGas({silent:true});
-    el.textContent='接続できました（'+(r.provider||'Gmail通知中継')+'）・GAS保存設定も読み込みました';
+    await sharedAvgPricesPromise;
+    const saved=await autoSaveAvgPricesToGas({silent:true});
+    el.textContent='接続できました（'+(r.provider||'Gmail通知中継')+'）'+(saved?'・中古平均価格を自動保存しました':'');
     el.className='status ok';
   }catch(e){
     el.textContent='接続できません: '+e.message;
@@ -1155,7 +1114,7 @@ async function resetMailHistory(){
 $('resetMailHistoryBtn').addEventListener('click',resetMailHistory);
 
 window.addEventListener('load',()=>{
-  setTimeout(()=>loadAppConfigFromGas({silent:true}),300);
+  setTimeout(async()=>{await sharedAvgPricesPromise;await autoSaveAvgPricesToGas();},300);
 });
 
 async function runBulkSearch(){
@@ -1204,8 +1163,9 @@ async function runBulkSearch(){
     status.textContent=`メール検索完了。候補追加 ${added}件／除外 ${rejected}件`;
     if(result.remainingDueToLimit) status.textContent+='。上限に達したため、もう一度押すと残りを確認できます';
     status.className='status ok';
-    if(candidates.length){
-      const best=[...candidates].map(c=>({...c,_score:candidateScore(c)})).sort((a,b)=>b._score-a._score)[0];
+    const eligibleCandidates=candidates.filter(c=>!$('excludeAboveAvg').checked||!c.avgPrice||!c.price||c.price<=c.avgPrice);
+    if(eligibleCandidates.length){
+      const best=[...eligibleCandidates].map(c=>({...c,_score:candidateScore(c)})).sort((a,b)=>b._score-a._score)[0];
       if(best){applyCandidate(best);status.textContent+='。おすすめ1位を③へ反映しました';}
     }
     if(result.warnings&&result.warnings.length){
@@ -1222,19 +1182,19 @@ async function runBulkSearch(){
 
 function renderCandidates(){
   const list=$('candidateList');
-  if(!candidates.length){ list.innerHTML='<div class="emptyBox">候補はまだありません。<br>上の「新着通知メールを検索・おすすめ決定」を押してください。</div>'; return; }
-  const ranked=[...candidates].map(c=>({...c,_score:candidateScore(c)})).sort((a,b)=>b._score-a._score);
+  const visibleCandidates=candidates.filter(c=>!$('excludeAboveAvg').checked||!c.avgPrice||!c.price||c.price<=c.avgPrice);
+  if(!visibleCandidates.length){ list.innerHTML='<div class="emptyBox">表示できる候補はありません。<br>上の「新着通知メールを検索・おすすめ決定」を押してください。</div>'; return; }
+  const ranked=[...visibleCandidates].map(c=>({...c,_score:candidateScore(c)})).sort((a,b)=>b._score-a._score);
   list.innerHTML=ranked.map((c,i)=>{
-    const risk=c.riskFlags.length ? `<span class="badge bad">注意: ${esc(c.riskFlags.join('・'))}</span>` : (i===0?'<span class="badge">今回のおすすめ</span>':'');
-    const discount=c.discountRate===null?'比較不能':`${c.discountYen>=0?'-':'+'}${Math.abs(c.discountYen).toLocaleString()}円（${c.discountRate.toFixed(1)}%安）`;
+    const risk=(c.riskFlags||[]).length ? `<span class="badge bad">注意: ${esc(c.riskFlags.join('・'))}</span>` : (i===0?'<span class="badge">今回のおすすめ</span>':'');
+    const discount=c.discountRate==null?'比較不能':`${c.discountYen>=0?'-':'+'}${Math.abs(c.discountYen).toLocaleString()}円（${c.discountRate.toFixed(1)}%安）`;
     return `<div class="candidate ${i===0?'best':''}">
       ${risk}<div class="candidateHead">${c.image?`<img src="${esc(c.image)}" alt="">`:'<div style="width:76px;height:76px"></div>'}
       <div><p class="candidateTitle">${esc(c.title)}</p><div class="candidatePrice">${c.price?yen(c.price):'価格不明'}</div>
-      <div class="candidateMeta">${esc(c.model||'機種不明')} / ${esc(c.storage||'容量不明')}<br>中古平均価格 ${c.avgPrice?yen(c.avgPrice):'データなし'} / ${discount}<br>状態 ${esc(c.condition||'不明')} / バッテリー ${c.battery===null?'不明':c.battery+'%'} / 選定 ${c._score}点${c.sourceDate?'<br>通知: '+esc(c.sourceDate):''}</div></div></div>
-      <div class="candidateActions"><button class="btn-primary" data-adopt="${esc(c.url)}">この商品を採用</button><button class="btn-secondary" data-delete="${esc(c.url)}">削除</button></div></div>`;
+      <div class="candidateMeta">${esc(c.model||'機種不明')} / ${esc(c.storage||'容量不明')}<br>中古平均価格 ${c.avgPrice?yen(c.avgPrice):'データなし'} / ${discount}</div>
+      <button class="btn-primary adoptBtn" data-adopt="${esc(c.url)}">採用</button></div></div></div>`;
   }).join('');
   list.querySelectorAll('[data-adopt]').forEach(b=>b.addEventListener('click',()=>applyCandidate(candidates.find(c=>c.url===b.dataset.adopt))));
-  list.querySelectorAll('[data-delete]').forEach(b=>b.addEventListener('click',()=>{candidates=candidates.filter(c=>c.url!==b.dataset.delete);saveCandidates();renderCandidates();}));
 }
 
 async function applyCandidate(c){
@@ -1242,12 +1202,11 @@ async function applyCandidate(c){
   $('selectedMercariUrl').value=c.url;
   $('selectedProductLink').innerHTML=`選択中: <a href="${esc(c.url)}" target="_blank" rel="noopener">メルカリ商品ページを開く ↗</a>`;
   $('fTitle').value=c.title||''; $('fPrice').value=c.price||'';
-  $('fSummary').value='';
+  $('fSummary').value='';$('fProductDetails').value='';$('productDetailsStatus').textContent='';
   if(MODELS.includes(c.model)) $('fModel').value=c.model;
   if(STORAGES.includes(c.storage)) $('fStorage').value=c.storage;
   $('fColor').value=c.color||'';
   if(c.condition) $('fCondition').value=c.condition;
-  $('fBattery').value=c.battery===null?'情報：無':c.battery;
   const productImages=(c.images&&c.images.length?c.images:[c.image]).filter(Boolean);
   if(productImages[0]){$('imgPreview').src=productImages[0];$('imgPreview').dataset.src=productImages[0];$('imgPreview').dataset.src2=productImages[1]||'';$('imgPreview').style.display='block';}
   updateAvgPriceDisplay(); updateAmazonSearchLink(); regeneratePostText(); regenerateAffiliateText();
@@ -1269,9 +1228,8 @@ async function addCandidateFromUrl(url){
 }
 
 $('bulkSearchBtn').addEventListener('click',runBulkSearch);
-['searchMinBattery','searchMinDiscount','excludeRisk','trustSavedSearch','searchSimFree','rejectUnknownBattery','requireShippingIncluded']
+['searchMinBattery','excludeAboveAvg','excludeRisk','trustSavedSearch','searchSimFree','rejectUnknownBattery','requireShippingIncluded']
   .forEach(id=>$(id).addEventListener('change',renderCandidates));
-$('clearCandidatesBtn').addEventListener('click',()=>{if(confirm('候補をすべて削除しますか？')){candidates=[];saveCandidates();renderCandidates();}});
 renderCandidates();
 
 (function receiveSharedProduct(){
@@ -1280,7 +1238,7 @@ renderCandidates();
   if(url){ addCandidateFromUrl(url).finally(()=>history.replaceState({},'',location.pathname)); }
 })();
 
-// ========== ⑦ 画像生成 ==========
+// ========== ⑤ Xポスト用画像生成 ==========
 function loadImageViaProxy(url){
   const strippedUrl = url.replace(/^https?:\/\//, '');
   const candidates = [
@@ -1348,7 +1306,7 @@ $('generateBtn').addEventListener('click', async () => {
   const x=24,w=W-48;
 
   // 上段: 商品画像を左右いっぱいに表示
-  const imageY=74,imageH=450,bx=0,boxW=W,boxH=imageH,boxY=imageY,imgSrc=$('imgPreview').dataset.src;
+  const imageY=74,imageH=350,bx=0,boxW=W,boxH=imageH,boxY=imageY,imgSrc=$('imgPreview').dataset.src;
   ctx.fillStyle='#0a101b';ctx.fillRect(bx,boxY,boxW,boxH);
   if(imgSrc){try{
     const img=await loadImageViaProxy(imgSrc);
@@ -1356,20 +1314,20 @@ $('generateBtn').addEventListener('click', async () => {
     ctx.drawImage(img,bx+(boxW-cw)/2,boxY+(boxH-ch)/2,cw,ch);
   }catch(e){ctx.fillStyle='#cbd5e1';ctx.font='32px sans-serif';ctx.textAlign='center';ctx.fillText('商品画像を読み込めませんでした',W/2,boxY+boxH/2);}}
   else{ctx.fillStyle='#cbd5e1';ctx.font='32px sans-serif';ctx.textAlign='center';ctx.fillText('商品画像を選択してください',W/2,boxY+boxH/2);}
-  const imageShade=ctx.createLinearGradient(0,imageY+200,0,imageY+imageH);imageShade.addColorStop(0,'rgba(3,9,18,0)');imageShade.addColorStop(.35,'rgba(3,9,18,.52)');imageShade.addColorStop(1,'rgba(3,9,18,.97)');ctx.fillStyle=imageShade;ctx.fillRect(0,imageY+200,W,imageH-200);
+  const imageShade=ctx.createLinearGradient(0,imageY+130,0,imageY+imageH);imageShade.addColorStop(0,'rgba(3,9,18,0)');imageShade.addColorStop(.35,'rgba(3,9,18,.52)');imageShade.addColorStop(1,'rgba(3,9,18,.97)');ctx.fillStyle=imageShade;ctx.fillRect(0,imageY+130,W,imageH-130);
   ctx.strokeStyle='#e8c878';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(0,imageY);ctx.lineTo(W,imageY);ctx.moveTo(0,imageY+imageH);ctx.lineTo(W,imageY+imageH);ctx.stroke();
-  ctx.textAlign='left';ctx.fillStyle='#f8fafc';ctx.font='900 32px sans-serif';wrapText(ctx,$('fTitle').value||'商品タイトル未設定',32,imageY+272,W-64,40,2);
-  ctx.fillStyle='#ffcf5c';ctx.font='900 56px sans-serif';ctx.textAlign='right';ctx.fillText($('fPrice').value?parsePrice($('fPrice').value).toLocaleString()+'円':'価格未設定',W-32,imageY+390);
-  ctx.fillStyle='#7de6ec';ctx.font='bold 25px sans-serif';ctx.textAlign='left';ctx.fillText(`${$('fModel').value} / ${$('fStorage').value} / ${$('fColor').value||'カラー未設定'}`,32,imageY+435);
+  ctx.textAlign='left';ctx.fillStyle='#f8fafc';ctx.font='900 32px sans-serif';wrapText(ctx,$('fTitle').value||'商品タイトル未設定',32,imageY+190,W-64,40,2);
+  ctx.fillStyle='#ffcf5c';ctx.font='900 56px sans-serif';ctx.textAlign='right';ctx.fillText($('fPrice').value?parsePrice($('fPrice').value).toLocaleString()+'円':'価格未設定',W-32,imageY+288);
+  ctx.fillStyle='#7de6ec';ctx.font='bold 25px sans-serif';ctx.textAlign='left';ctx.fillText(`${$('fModel').value} / ${$('fStorage').value} / ${$('fColor').value||'カラー未設定'}`,32,imageY+335);
 
   // 中段: 商品価格比較
-  const graphY=544,graphH=310;drawLuxuryPanel(ctx,x,graphY,w,graphH,26);
-  ctx.fillStyle='#f8fafc';ctx.font='900 38px sans-serif';ctx.textAlign='left';ctx.fillText('商品価格比較',x+28,graphY+50);
-  drawPriceComparison(ctx,x+28,graphY+94,w-56,getPriceComparisonData(),{labelColor:'#f8fafc',subColor:'#d8e1ed',trackColor:'rgba(255,255,255,.12)',rowGap:58,barH:24,labelFont:'bold 24px sans-serif',subFont:'bold 24px sans-serif'});drawPopLabel(ctx,x+28,graphY+246,w-56,'商品状態：'+($('fCondition').value||'未設定'),30,52);
+  const graphY=448,graphH=260;drawLuxuryPanel(ctx,x,graphY,w,graphH,26);
+  ctx.fillStyle='#f8fafc';ctx.font='900 38px sans-serif';ctx.textAlign='left';ctx.fillText('商品価格比較',x+28,graphY+48);
+  drawPriceComparison(ctx,x+28,graphY+88,w-56,getPriceComparisonData(),{labelColor:'#f8fafc',subColor:'#d8e1ed',trackColor:'rgba(255,255,255,.12)',rowGap:56,barH:22,labelFont:'bold 24px sans-serif',subFont:'bold 24px sans-serif'});
 
   // 下段: 投稿本文のみ（見出しは表示しない）
-  const postY=874,postH=430;drawLuxuryPanel(ctx,x,postY,w,postH,26);
-  ctx.fillStyle='#e8edf5';ctx.font='bold 27px sans-serif';ctx.textAlign='left';ctx.textBaseline='alphabetic';drawMultilineText(ctx,$('postText').value||buildPostText(),x+28,postY+40,w-56,35,10);
+  const postY=730,postH=574;drawLuxuryPanel(ctx,x,postY,w,postH,26);
+  ctx.fillStyle='#e8edf5';ctx.font='bold 27px sans-serif';ctx.textAlign='left';ctx.textBaseline='alphabetic';drawMultilineText(ctx,buildPostText(),x+28,postY+40,w-56,35,12);
   ctx.fillStyle='#8191a8';ctx.font='18px sans-serif';ctx.textAlign='center';ctx.fillText('※価格・状態・保証内容は各商品ページで最新情報をご確認ください',W/2,H-14);
 
   const dataUrl=canvas.toDataURL('image/png');const out=$('outputImg'),btn=$('downloadBtn');out.src=dataUrl;out.style.display='block';btn.style.display='block';btn.onclick=()=>{const a=document.createElement('a');a.href=dataUrl;a.download='iphone_infographic.png';a.click();};
