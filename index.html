@@ -190,7 +190,7 @@
   <div class="card">
     <h2>⑤ Xポスト用画像を生成</h2>
     <button class="btn-primary" id="generateBtn">インフォグラフィック画像を作成</button>
-    <img id="outputImg" alt="商品画像・商品価格比較・投稿文のインフォグラフィック">
+    <img id="outputImg" alt="商品画像・商品価格比較・商品情報のインフォグラフィック">
     <button class="btn-secondary" id="downloadBtn" style="display:none;">画像をダウンロード</button>
     <canvas id="outputCanvas" width="1080" height="1350"></canvas>
   </div>
@@ -845,8 +845,8 @@ async function createSummaryFromProductPage(c){
     if(c.color)$('fColor').value=c.color;
     if(c.condition)$('fCondition').value=c.condition;
     saveCandidates();drawPreview();
-    status.textContent=summary?'「商品の説明」本文から120文字以内の箇条書きを作成しました':'商品の説明本文を取得できませんでした'+(detailError?'（'+detailError+'）':'');
-    status.className=summary?'status ok':'status err';
+    status.textContent=summary?'「商品の説明」本文から120文字以内の箇条書きを作成しました':'';
+    status.className=summary?'status ok':'status';
   }catch(e){$('fSummary').value='';status.textContent='商品紹介文の生成に失敗しました（'+e.message+'）';status.className='status err';}
   regeneratePostText();
 }
@@ -1305,8 +1305,10 @@ $('generateBtn').addEventListener('click', async () => {
   drawInfographicBase(ctx,W,H,'PREMIUM MERCALI PICK iPhone');
   const x=24,w=W-48;
 
-  // 上段: 商品画像を左右いっぱいに表示
-  const imageY=74,imageH=350,bx=0,boxW=W,boxH=imageH,boxY=imageY,imgSrc=$('imgPreview').dataset.src;
+  // 3区画は24px以上の間隔を空け、各区画内へ描画を固定する
+  // 上段: 商品画像のみ（文字・グラフ・商品情報は描画しない）
+  const imageY=76,imageH=354,bx=0,boxW=W,boxH=imageH,boxY=imageY,imgSrc=$('imgPreview').dataset.src;
+  ctx.save();ctx.beginPath();ctx.rect(0,imageY,W,imageH);ctx.clip();
   ctx.fillStyle='#0a101b';ctx.fillRect(bx,boxY,boxW,boxH);
   if(imgSrc){try{
     const img=await loadImageViaProxy(imgSrc);
@@ -1315,19 +1317,18 @@ $('generateBtn').addEventListener('click', async () => {
   }catch(e){ctx.fillStyle='#cbd5e1';ctx.font='32px sans-serif';ctx.textAlign='center';ctx.fillText('商品画像を読み込めませんでした',W/2,boxY+boxH/2);}}
   else{ctx.fillStyle='#cbd5e1';ctx.font='32px sans-serif';ctx.textAlign='center';ctx.fillText('商品画像を選択してください',W/2,boxY+boxH/2);}
   const imageShade=ctx.createLinearGradient(0,imageY+130,0,imageY+imageH);imageShade.addColorStop(0,'rgba(3,9,18,0)');imageShade.addColorStop(.35,'rgba(3,9,18,.52)');imageShade.addColorStop(1,'rgba(3,9,18,.97)');ctx.fillStyle=imageShade;ctx.fillRect(0,imageY+130,W,imageH-130);
-  ctx.strokeStyle='#e8c878';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(0,imageY);ctx.lineTo(W,imageY);ctx.moveTo(0,imageY+imageH);ctx.lineTo(W,imageY+imageH);ctx.stroke();
-  ctx.textAlign='left';ctx.fillStyle='#f8fafc';ctx.font='900 32px sans-serif';wrapText(ctx,$('fTitle').value||'商品タイトル未設定',32,imageY+190,W-64,40,2);
-  ctx.fillStyle='#ffcf5c';ctx.font='900 56px sans-serif';ctx.textAlign='right';ctx.fillText($('fPrice').value?parsePrice($('fPrice').value).toLocaleString()+'円':'価格未設定',W-32,imageY+288);
-  ctx.fillStyle='#7de6ec';ctx.font='bold 25px sans-serif';ctx.textAlign='left';ctx.fillText(`${$('fModel').value} / ${$('fStorage').value} / ${$('fColor').value||'カラー未設定'}`,32,imageY+335);
+  ctx.strokeStyle='#e8c878';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(0,imageY);ctx.lineTo(W,imageY);ctx.moveTo(0,imageY+imageH);ctx.lineTo(W,imageY+imageH);ctx.stroke();ctx.restore();
 
   // 中段: 商品価格比較
-  const graphY=448,graphH=260;drawLuxuryPanel(ctx,x,graphY,w,graphH,26);
+  const graphY=454,graphH=260;ctx.save();ctx.beginPath();ctx.rect(0,graphY,W,graphH);ctx.clip();drawLuxuryPanel(ctx,x,graphY,w,graphH,26);
   ctx.fillStyle='#f8fafc';ctx.font='900 38px sans-serif';ctx.textAlign='left';ctx.fillText('商品価格比較',x+28,graphY+48);
-  drawPriceComparison(ctx,x+28,graphY+88,w-56,getPriceComparisonData(),{labelColor:'#f8fafc',subColor:'#d8e1ed',trackColor:'rgba(255,255,255,.12)',rowGap:56,barH:22,labelFont:'bold 24px sans-serif',subFont:'bold 24px sans-serif'});
+  drawPriceComparison(ctx,x+28,graphY+88,w-56,getPriceComparisonData(),{labelColor:'#f8fafc',subColor:'#d8e1ed',trackColor:'rgba(255,255,255,.12)',rowGap:56,barH:22,labelFont:'bold 24px sans-serif',subFont:'bold 24px sans-serif'});ctx.restore();
 
-  // 下段: 投稿本文のみ（見出しは表示しない）
-  const postY=730,postH=574;drawLuxuryPanel(ctx,x,postY,w,postH,26);
-  ctx.fillStyle='#e8edf5';ctx.font='bold 27px sans-serif';ctx.textAlign='left';ctx.textBaseline='alphabetic';drawMultilineText(ctx,buildPostText(),x+28,postY+40,w-56,35,12);
+  // 下段: 商品情報（商品画像・価格比較グラフとは独立した領域）
+  const postY=738,postH=566;ctx.save();ctx.beginPath();ctx.rect(0,postY,W,postH);ctx.clip();drawLuxuryPanel(ctx,x,postY,w,postH,26);
+  ctx.fillStyle='#f8fafc';ctx.font='900 38px sans-serif';ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillText('商品情報',x+28,postY+48);
+  // 見出しの下に空行を入れず、商品情報をすぐに開始する
+  ctx.fillStyle='#e8edf5';ctx.font='bold 27px sans-serif';drawMultilineText(ctx,buildPostText(),x+28,postY+82,w-56,35,12);ctx.restore();
   ctx.fillStyle='#8191a8';ctx.font='18px sans-serif';ctx.textAlign='center';ctx.fillText('※価格・状態・保証内容は各商品ページで最新情報をご確認ください',W/2,H-14);
 
   const dataUrl=canvas.toDataURL('image/png');const out=$('outputImg'),btn=$('downloadBtn');out.src=dataUrl;out.style.display='block';btn.style.display='block';btn.onclick=()=>{const a=document.createElement('a');a.href=dataUrl;a.download='iphone_infographic.png';a.click();};
