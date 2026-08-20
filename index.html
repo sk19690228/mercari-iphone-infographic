@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>iPhone 16 メルカリURL比較</title>
+<title>iPhone 16 新着自動検索</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f4f5f8">
 <style>
@@ -82,18 +82,16 @@
 <body>
 <header>
   <h1>📱 iPhone出品インフォグラフィック作成</h1>
-  <p>メルカリの「もっと見る」URLから、お得な1台の画像を作成</p>
+  <p>固定検索条件から新着商品を自動取得</p>
 </header>
 
 <main>
 
   <div class="card">
-    <h2>① 「もっと見る」で開いたURLを入力</h2>
-    <div class="hint">Gmailのメルカリ通知で「もっと見る」を押し、開いたメルカリページのURLをコピーして貼り付けてください。</div>
-    <label>メルカリの商品一覧URL</label>
-    <input type="url" id="manualMercariListUrl" placeholder="https://jp.mercari.com/search?...">
+    <h2>① 固定条件で新着商品を自動検索</h2>
+    <div class="hint">アプリを開くたびに、指定済みのiPhone 16・SIMフリー検索条件で新着商品を取得します。</div>
     <details class="settings">
-      <summary>URL取得・選定条件</summary>
+      <summary>自動検索・選定条件</summary>
       <div class="row2">
         <div><label>取得する最大商品数</label><input type="number" id="mailMaxItems" value="40" min="1" max="100"></div>
         <div><label>最低バッテリー（記載時）</label><input type="number" id="searchMinBattery" value="80" min="0" max="100"></div>
@@ -111,14 +109,14 @@
       <button class="btn-secondary" id="testMercariApiBtn" type="button">URL取得用GASをテスト</button>
       <div class="status" id="mercariApiStatus"></div>
     </details>
-    <button class="btn-primary" id="bulkSearchBtn">このURLから商品を取得・おすすめ決定</button>
+    <button class="btn-primary" id="bulkSearchBtn">新着商品を再検索・おすすめ決定</button>
     <div class="status" id="bulkStatus"></div>
     <div class="progressBox" id="bulkProgress" style="display:none"></div>
     <div class="status" id="shareStatus" style="display:none"></div>
   </div>
 
   <div class="card">
-    <h2>② URLから取得した候補を比較</h2>
+    <h2>② 新着候補を比較</h2>
     <div id="candidateList"></div>
   </div>
 
@@ -208,7 +206,7 @@
   </div>
 
   <div class="footerNote">
-    相場データは2026年7月時点の参考値です。商品取得は、貼り付けたメルカリURLに対してボタンを押した時だけ実行します。Gmailは読み込みません。
+    相場データは2026年7月時点の参考値です。アプリを開くたびに固定条件で新着商品を検索します。Gmailは読み込みません。
   </div>
 </main>
 
@@ -940,7 +938,7 @@ function saveMercariApiSettings(){
   const v=getMercariApiSettings();
   localStorage.setItem('mercariApiUrl',v.url);
   localStorage.setItem('mercariApiToken',v.token);
-  ['manualMercariListUrl','mailMaxItems','searchMinBattery'].forEach(id=>{
+  ['mailMaxItems','searchMinBattery'].forEach(id=>{
     localStorage.setItem(id,$(id).value);
   });
   ['excludeAboveAvg','trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded'].forEach(id=>{
@@ -949,13 +947,13 @@ function saveMercariApiSettings(){
 }
 $('mercariApiUrl').value=localStorage.getItem('mercariApiUrl')||'';
 $('mercariApiToken').value=localStorage.getItem('mercariApiToken')||'';
-['manualMercariListUrl','mailMaxItems','searchMinBattery'].forEach(id=>{
+['mailMaxItems','searchMinBattery'].forEach(id=>{
   const saved=localStorage.getItem(id); if(saved!==null) $(id).value=saved;
 });
 ['excludeAboveAvg','trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded'].forEach(id=>{
   const saved=localStorage.getItem(id); if(saved!==null) $(id).checked=saved==='1';
 });
-['manualMercariListUrl','mercariApiUrl','mercariApiToken','mailMaxItems','searchMinBattery',
+['mercariApiUrl','mercariApiToken','mailMaxItems','searchMinBattery',
  'excludeAboveAvg','trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded']
  .forEach(id=>$(id).addEventListener('change',saveMercariApiSettings));
 ['mercariApiUrl','mercariApiToken'].forEach(id=>$(id).addEventListener('change',async()=>{
@@ -963,7 +961,7 @@ $('mercariApiToken').value=localStorage.getItem('mercariApiToken')||'';
 }));
 
 function mercariRelayTimeout(action){
-  return action==='searchListPage'?240000:(action==='fetchItem'?120000:60000);
+  return /^(?:searchFixedPage|searchListPage)$/.test(action)?240000:(action==='fetchItem'?120000:60000);
 }
 function validateMercariRelaySettings(cfg){
   if(!cfg.url) throw new Error('この端末にGASウェブアプリURLを設定してください');
@@ -977,7 +975,7 @@ function validateMercariRelaySettings(cfg){
 async function callMercariRelayFetch(action,params,cfg){
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),mercariRelayTimeout(action));
-  const qs=new URLSearchParams({action,token:cfg.token,client_version:'38',_ts:String(Date.now()),...params});
+  const qs=new URLSearchParams({action,token:cfg.token,client_version:'40',_ts:String(Date.now()),...params});
   try{
     const response=await fetch(cfg.url+'?'+qs.toString(),{
       method:'GET',mode:'cors',cache:'no-store',credentials:'omit',redirect:'follow',
@@ -992,7 +990,7 @@ async function callMercariRelayFetch(action,params,cfg){
 function callMercariRelayJsonp(action,params,cfg){
   return new Promise((resolve,reject)=>{
     const callback='__mercariRelay_'+Date.now()+'_'+Math.random().toString(36).slice(2);
-    const qs=new URLSearchParams({action,token:cfg.token,callback,client_version:'38',_ts:String(Date.now()),...params});
+    const qs=new URLSearchParams({action,token:cfg.token,callback,client_version:'40',_ts:String(Date.now()),...params});
     const script=document.createElement('script');
     script.async=true;
     script.referrerPolicy='no-referrer';
@@ -1144,38 +1142,31 @@ async function testMercariApi(){
 }
 $('testMercariApiBtn').addEventListener('click',testMercariApi);
 
+let skipAutomaticSearch=false;
 window.addEventListener('load',()=>{
-  setTimeout(async()=>{await sharedAvgPricesPromise;await autoSaveAvgPricesToGas();},300);
+  setTimeout(async()=>{
+    await sharedAvgPricesPromise;
+    if(!skipAutomaticSearch) await runBulkSearch({automatic:true});
+    await autoSaveAvgPricesToGas({silent:true});
+  },300);
 });
 
-async function runBulkSearch(){
+async function runBulkSearch({automatic=false}={}){
   if($('bulkSearchBtn').disabled) return;
   const cfg=getMercariApiSettings();
-  const sourceUrl=$('manualMercariListUrl').value.trim();
-  if(!sourceUrl){
-    $('bulkStatus').textContent='Gmailの「もっと見る」で開いたメルカリURLを入力してください';
-    $('bulkStatus').className='status err'; return;
-  }
-  try{
-    const parsed=new URL(sourceUrl);
-    if(parsed.protocol!=='https:' || !/(^|\.)mercari\.com$/i.test(parsed.hostname)) throw new Error();
-  }catch(e){
-    $('bulkStatus').textContent='https://jp.mercari.com/ で始まるメルカリURLを入力してください';
-    $('bulkStatus').className='status err'; return;
-  }
-  if(!cfg.url){
-    $('bulkStatus').textContent='先に「URL取得・選定条件」を開き、GASウェブアプリURLを設定してください';
+  if(!cfg.url || !cfg.token){
+    $('bulkStatus').textContent='「自動検索・選定条件」を開き、GASウェブアプリURLと中継用トークンを設定してください';
     $('bulkStatus').className='status err'; return;
   }
   saveMercariApiSettings();
+  candidates=[];saveCandidates();renderCandidates();
   $('bulkSearchBtn').disabled=true;
   const status=$('bulkStatus'),progress=$('bulkProgress');
   progress.style.display='block';progress.textContent='';
-  status.textContent='入力されたメルカリURLから商品を取得しています...';status.className='status loading';
+  status.textContent=automatic?'アプリ起動時の新着検索を実行しています...':'新着商品を再検索しています...';status.className='status loading';
   const log=msg=>{progress.textContent+=msg+'\n';progress.scrollTop=progress.scrollHeight;};
   try{
-    const result=await callMercariRelay('searchListPage',{
-      url:sourceUrl,
+    const result=await callMercariRelay('searchFixedPage',{
       max_items:String(Math.max(1,Math.min(100,Number($('mailMaxItems').value||40))))
     });
     const items=Array.isArray(result.items)?result.items:[];
@@ -1198,9 +1189,9 @@ async function runBulkSearch(){
       log('✓ '+label+(c.discountRate===null?' / 相場比較不能':' / '+c.discountRate.toFixed(1)+'%安'));
     });
     saveCandidates();renderCandidates();
-    status.textContent=`URL取得完了。候補追加 ${added}件／除外 ${rejected}件`;
+    status.textContent=`新着検索完了。候補追加 ${added}件／除外 ${rejected}件`;
     if(!items.length){
-      status.textContent+='。入力URLから商品情報を取得できませんでした';
+      status.textContent+='。固定検索条件に一致する商品情報を取得できませんでした';
     }
     if(result.remainingDueToLimit) status.textContent+='。取得上限に達しています。必要なら最大商品数を増やしてください';
     status.className='status ok';
@@ -1213,7 +1204,7 @@ async function runBulkSearch(){
       result.warnings.slice(0,8).forEach(w=>log('! '+w));
     }
   }catch(e){
-    status.textContent='URLからの商品取得に失敗しました: '+e.message;
+    status.textContent='新着商品の自動検索に失敗しました: '+e.message;
     status.className='status err';
     log('! '+e.message);
   }finally{
@@ -1224,7 +1215,7 @@ async function runBulkSearch(){
 function renderCandidates(){
   const list=$('candidateList');
   const visibleCandidates=candidates.filter(c=>!$('excludeAboveAvg').checked||!c.avgPrice||!c.price||c.price<=c.avgPrice);
-  if(!visibleCandidates.length){ list.innerHTML='<div class="emptyBox">表示できる候補はありません。<br>上のURLを入力して「このURLから商品を取得・おすすめ決定」を押してください。</div>'; return; }
+  if(!visibleCandidates.length){ list.innerHTML='<div class="emptyBox">新着商品を検索しています。<br>検索後、条件に合う候補がここへ表示されます。</div>'; return; }
   const ranked=[...visibleCandidates].map(c=>({...c,_score:candidateScore(c)})).sort((a,b)=>b._score-a._score);
   list.innerHTML=ranked.map((c,i)=>{
     const risk=(c.riskFlags||[]).length ? `<span class="badge bad">注意: ${esc(c.riskFlags.join('・'))}</span>` : (i===0?'<span class="badge">今回のおすすめ</span>':'');
@@ -1268,7 +1259,7 @@ async function addCandidateFromUrl(url){
   }catch(e){status.textContent='候補の取得に失敗しました（'+e.message+'）';status.className='status err';}
 }
 
-$('bulkSearchBtn').addEventListener('click',runBulkSearch);
+$('bulkSearchBtn').addEventListener('click',()=>runBulkSearch());
 ['searchMinBattery','excludeAboveAvg','excludeRisk','trustSavedSearch','searchSimFree','rejectUnknownBattery','requireShippingIncluded']
   .forEach(id=>$(id).addEventListener('change',renderCandidates));
 renderCandidates();
@@ -1276,7 +1267,7 @@ renderCandidates();
 (function receiveSharedProduct(){
   const p=new URLSearchParams(location.search);
   const url=extractMercariUrl(p.get('url')||p.get('text')||p.get('title')||'');
-  if(url){ addCandidateFromUrl(url).finally(()=>history.replaceState({},'',location.pathname)); }
+  if(url){ skipAutomaticSearch=true;addCandidateFromUrl(url).finally(()=>history.replaceState({},'',location.pathname)); }
 })();
 
 // ========== ⑤ Xポスト用画像生成 ==========
