@@ -9,8 +9,9 @@
  */
 
 var AVG_PRICES_KEY = 'AVG_PRICES_V1';
-var CODE_VERSION = '38';
+var CODE_VERSION = '39';
 var USER_AGENT = 'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36';
+var LIST_PAGE_USER_AGENT = 'Googlebot/2.1 (+http://www.google.com/bot.html)';
 
 function doGet(e) {
   var p = e && e.parameter ? e.parameter : {};
@@ -73,7 +74,10 @@ function searchListPage_(p) {
   if (directMatch) {
     directItemUrls.push(normalizeMercariUrl_(directMatch[0]));
   } else {
-    var page = fetchAllSafe_([sourceUrl])[0];
+    // Mercari search pages load products with JavaScript for normal browsers.
+    // The public crawler view contains the same results in the HTML, allowing
+    // Apps Script to extract product links without browser automation.
+    var page = fetchAllSafe_([sourceUrl], LIST_PAGE_USER_AGENT)[0];
     if (!page || !page.ok) throw new Error('入力されたメルカリページを取得できませんでした');
     listPageFetched = true;
     directItemUrls = extractMercariLinks_(page.text).items;
@@ -116,8 +120,9 @@ function validateManualMercariUrl_(value) {
   return cleanUrl_(url);
 }
 
-function fetchAllSafe_(urls) {
+function fetchAllSafe_(urls, userAgent) {
   if (!urls.length) return [];
+  var requestUserAgent = String(userAgent || USER_AGENT);
   var requests = urls.map(function(url) {
     return {
       url: url,
@@ -125,7 +130,7 @@ function fetchAllSafe_(urls) {
       followRedirects: true,
       muteHttpExceptions: true,
       headers: {
-        'User-Agent': USER_AGENT,
+        'User-Agent': requestUserAgent,
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.5',
         'Accept': 'text/html,application/xhtml+xml'
       }
@@ -142,7 +147,7 @@ function fetchAllSafe_(urls) {
       try {
         var response = UrlFetchApp.fetch(url, {
           method:'get', followRedirects:true, muteHttpExceptions:true,
-          headers:{'User-Agent':USER_AGENT, 'Accept-Language':'ja-JP,ja;q=0.9,en;q=0.5'}
+          headers:{'User-Agent':requestUserAgent, 'Accept-Language':'ja-JP,ja;q=0.9,en;q=0.5'}
         });
         var code = response.getResponseCode();
         return {ok:code >= 200 && code < 400, code:code, text:response.getContentText('UTF-8')};
