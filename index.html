@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>iPhone 16 新着メール比較</title>
+<title>iPhone 16 メルカリURL比較</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f4f5f8">
 <style>
@@ -82,46 +82,43 @@
 <body>
 <header>
   <h1>📱 iPhone出品インフォグラフィック作成</h1>
-  <p>メルカリ新着通知メールから、お得な1台の画像を作成</p>
+  <p>メルカリの「もっと見る」URLから、お得な1台の画像を作成</p>
 </header>
 
 <main>
 
   <div class="card">
-    <h2>① Gmailのメルカリ新着通知を取得</h2>
+    <h2>① 「もっと見る」で開いたURLを入力</h2>
+    <div class="hint">Gmailのメルカリ通知で「もっと見る」を押し、開いたメルカリページのURLをコピーして貼り付けてください。</div>
+    <label>メルカリの商品一覧URL</label>
+    <input type="url" id="manualMercariListUrl" placeholder="https://jp.mercari.com/search?...">
     <details class="settings">
-      <summary>メール取得・選定条件</summary>
-      <div class="row2">
-        <div><label>メールを遡る日数</label><input type="number" id="mailSearchDays" value="14" min="1" max="30"></div>
-        <div><label>確認する最大スレッド数</label><input type="number" id="mailMaxThreads" value="50" min="1" max="100"></div>
-      </div>
+      <summary>URL取得・選定条件</summary>
       <div class="row2">
         <div><label>取得する最大商品数</label><input type="number" id="mailMaxItems" value="40" min="1" max="100"></div>
         <div><label>最低バッテリー（記載時）</label><input type="number" id="searchMinBattery" value="80" min="0" max="100"></div>
       </div>
       <label><input type="checkbox" id="excludeAboveAvg" checked> 中古平均価格と比較して高い商品は除外</label>
-      <label><input type="checkbox" id="trustSavedSearch" checked> メール元の保存検索条件を信頼し、メール・商品ページで確認できない項目は除外しない</label>
+      <label><input type="checkbox" id="trustSavedSearch" checked> URL元の検索条件を信頼し、商品ページで確認できない項目は除外しない</label>
       <label><input type="checkbox" id="searchSimFree" checked> SIMロックありと明記された商品を除外</label>
       <label><input type="checkbox" id="excludeRisk" checked> ジャンク・空箱・部品取り等を除外</label>
       <label><input type="checkbox" id="rejectUnknownBattery"> バッテリー最大容量が不明の商品も除外</label>
       <label><input type="checkbox" id="requireShippingIncluded" checked> 着払い・購入者負担と明記された商品を除外</label>
-      <label><input type="checkbox" id="markProcessed" checked> 取得済みメールを「iPhoneインフォ/処理済み」ラベルで管理</label>
-      <label>GASウェブアプリURL</label>
+      <label>URL取得用GASウェブアプリURL</label>
       <input type="url" id="mercariApiUrl" placeholder="https://script.google.com/macros/s/.../exec">
       <label>中継用トークン</label>
       <input type="text" id="mercariApiToken" placeholder="GASのAPP_TOKENと同じ値">
-      <button class="btn-secondary" id="testMercariApiBtn" type="button">Gmail接続をテスト</button>
-      <button class="btn-secondary" id="resetMailHistoryBtn" type="button">メール処理履歴をリセット</button>
+      <button class="btn-secondary" id="testMercariApiBtn" type="button">URL取得用GASをテスト</button>
       <div class="status" id="mercariApiStatus"></div>
     </details>
-    <button class="btn-primary" id="bulkSearchBtn">新着通知メールを検索・おすすめ決定</button>
+    <button class="btn-primary" id="bulkSearchBtn">このURLから商品を取得・おすすめ決定</button>
     <div class="status" id="bulkStatus"></div>
     <div class="progressBox" id="bulkProgress" style="display:none"></div>
     <div class="status" id="shareStatus" style="display:none"></div>
   </div>
 
   <div class="card">
-    <h2>② 通知メールから取得した候補を比較</h2>
+    <h2>② URLから取得した候補を比較</h2>
     <div id="candidateList"></div>
   </div>
 
@@ -211,7 +208,7 @@
   </div>
 
   <div class="footerNote">
-    相場データは2026年7月時点の参考値です。新着取得は、ボタンを押した時だけGmailのメルカリ通知メールを確認します。
+    相場データは2026年7月時点の参考値です。商品取得は、貼り付けたメルカリURLに対してボタンを押した時だけ実行します。Gmailは読み込みません。
   </div>
 </main>
 
@@ -510,7 +507,7 @@ async function autoSaveAvgPricesToGas({silent=false}={}){
   statusEl.textContent='中古平均価格をGASへ自動保存中...';statusEl.className='status loading';
   try {
     const cleaned=buildAvgPricePayload();
-    await callGmailRelay('saveAvgPrices', { data: JSON.stringify(cleaned) });
+    await callMercariRelay('saveAvgPrices', { data: JSON.stringify(cleaned) });
     avgPriceOverrides = { ...cleaned };
     statusEl.textContent='中古平均価格を自動取得・GASへ保存しました';statusEl.className='status ok';
     return true;
@@ -826,7 +823,7 @@ async function createSummaryFromProductPage(c){
     const cfg=getMercariApiSettings();
     if(c.url&&cfg.url&&cfg.token){
       try{
-        const response=await callGmailRelay('fetchItem',{url:c.url});const item=response.item||response;
+        const response=await callMercariRelay('fetchItem',{url:c.url});const item=response.item||response;
         addSource(item.bodyText);addSource(item.description);applyImage(item.image,item.images||[]);
         if(item.condition)c.condition=item.condition;if(item.color)c.color=item.color;
       }catch(e){detailError=e.message;}
@@ -943,32 +940,32 @@ function saveMercariApiSettings(){
   const v=getMercariApiSettings();
   localStorage.setItem('mercariApiUrl',v.url);
   localStorage.setItem('mercariApiToken',v.token);
-  ['mailSearchDays','mailMaxThreads','mailMaxItems','searchMinBattery'].forEach(id=>{
+  ['manualMercariListUrl','mailMaxItems','searchMinBattery'].forEach(id=>{
     localStorage.setItem(id,$(id).value);
   });
-  ['excludeAboveAvg','trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded','markProcessed'].forEach(id=>{
+  ['excludeAboveAvg','trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded'].forEach(id=>{
     localStorage.setItem(id,$(id).checked?'1':'0');
   });
 }
 $('mercariApiUrl').value=localStorage.getItem('mercariApiUrl')||'';
 $('mercariApiToken').value=localStorage.getItem('mercariApiToken')||'';
-['mailSearchDays','mailMaxThreads','mailMaxItems','searchMinBattery'].forEach(id=>{
+['manualMercariListUrl','mailMaxItems','searchMinBattery'].forEach(id=>{
   const saved=localStorage.getItem(id); if(saved!==null) $(id).value=saved;
 });
-['excludeAboveAvg','trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded','markProcessed'].forEach(id=>{
+['excludeAboveAvg','trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded'].forEach(id=>{
   const saved=localStorage.getItem(id); if(saved!==null) $(id).checked=saved==='1';
 });
-['mercariApiUrl','mercariApiToken','mailSearchDays','mailMaxThreads','mailMaxItems','searchMinBattery',
- 'excludeAboveAvg','trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded','markProcessed']
+['manualMercariListUrl','mercariApiUrl','mercariApiToken','mailMaxItems','searchMinBattery',
+ 'excludeAboveAvg','trustSavedSearch','searchSimFree','excludeRisk','rejectUnknownBattery','requireShippingIncluded']
  .forEach(id=>$(id).addEventListener('change',saveMercariApiSettings));
 ['mercariApiUrl','mercariApiToken'].forEach(id=>$(id).addEventListener('change',async()=>{
   await sharedAvgPricesPromise;scheduleAvgPriceAutoSave();
 }));
 
-function gmailRelayTimeout(action){
-  return action==='searchMail'?240000:(action==='fetchItem'?120000:60000);
+function mercariRelayTimeout(action){
+  return action==='searchListPage'?240000:(action==='fetchItem'?120000:60000);
 }
-function validateGmailRelaySettings(cfg){
+function validateMercariRelaySettings(cfg){
   if(!cfg.url) throw new Error('この端末にGASウェブアプリURLを設定してください');
   if(!cfg.token) throw new Error('この端末に中継用トークンを設定してください');
   let parsed;
@@ -977,10 +974,10 @@ function validateGmailRelaySettings(cfg){
     throw new Error('GASウェブアプリの /exec URLを設定してください');
   }
 }
-async function callGmailRelayFetch(action,params,cfg){
+async function callMercariRelayFetch(action,params,cfg){
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),gmailRelayTimeout(action));
-  const qs=new URLSearchParams({action,token:cfg.token,client_version:'37',_ts:String(Date.now()),...params});
+  const timer=setTimeout(()=>controller.abort(),mercariRelayTimeout(action));
+  const qs=new URLSearchParams({action,token:cfg.token,client_version:'38',_ts:String(Date.now()),...params});
   try{
     const response=await fetch(cfg.url+'?'+qs.toString(),{
       method:'GET',mode:'cors',cache:'no-store',credentials:'omit',redirect:'follow',
@@ -992,10 +989,10 @@ async function callGmailRelayFetch(action,params,cfg){
     return data;
   }finally{ clearTimeout(timer); }
 }
-function callGmailRelayJsonp(action,params,cfg){
+function callMercariRelayJsonp(action,params,cfg){
   return new Promise((resolve,reject)=>{
-    const callback='__gmailRelay_'+Date.now()+'_'+Math.random().toString(36).slice(2);
-    const qs=new URLSearchParams({action,token:cfg.token,callback,client_version:'37',_ts:String(Date.now()),...params});
+    const callback='__mercariRelay_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    const qs=new URLSearchParams({action,token:cfg.token,callback,client_version:'38',_ts:String(Date.now()),...params});
     const script=document.createElement('script');
     script.async=true;
     script.referrerPolicy='no-referrer';
@@ -1010,20 +1007,20 @@ function callGmailRelayJsonp(action,params,cfg){
       else resolve(data);
     };
     script.onerror=()=>{cleanup();reject(new Error('スマホブラウザがGAS通信を遮断しました。GAS URL・この端末のトークン・ブラウザのコンテンツブロックを確認してください'));};
-    const timer=setTimeout(()=>{cleanup();reject(new Error('GASがタイムアウトしました。Code.gsを最新版へ更新し、新バージョンで再デプロイしてください'));},gmailRelayTimeout(action));
+    const timer=setTimeout(()=>{cleanup();reject(new Error('GASがタイムアウトしました。Code.gsを最新版へ更新し、新バージョンで再デプロイしてください'));},mercariRelayTimeout(action));
     script.src=cfg.url+'?'+qs.toString();
     document.head.appendChild(script);
   });
 }
-async function callGmailRelay(action,params={}){
+async function callMercariRelay(action,params={}){
   const cfg=getMercariApiSettings();
-  validateGmailRelaySettings(cfg);
+  validateMercariRelaySettings(cfg);
   try{
-    return await callGmailRelayFetch(action,params,cfg);
+    return await callMercariRelayFetch(action,params,cfg);
   }catch(fetchError){
     if(fetchError?.name==='AbortError') throw new Error('GASがタイムアウトしました。通信環境を確認して再実行してください');
     if(!/Failed to fetch|Load failed|NetworkError|fetch resource|HTTPエラー|JSON/i.test(String(fetchError?.message||fetchError))) throw fetchError;
-    try{ return await callGmailRelayJsonp(action,params,cfg); }
+    try{ return await callMercariRelayJsonp(action,params,cfg); }
     catch(jsonpError){ throw new Error(jsonpError.message+'（標準通信: '+fetchError.message+'）'); }
   }
 }
@@ -1032,7 +1029,7 @@ async function loadAppConfigFromGas({silent=false}={}){
   const cfg=getMercariApiSettings();
   if(!cfg.url || !cfg.token) return false;
   try{
-    const r=await callGmailRelay('getAppConfig');
+    const r=await callMercariRelay('getAppConfig');
     if(r.avgPrices && typeof r.avgPrices==='object'){
       avgPriceOverrides={...r.avgPrices};
       Object.keys(avgPriceOverrides).forEach(k=>{
@@ -1061,7 +1058,7 @@ function triState(text,yesPattern,noPattern){
   if(noPattern.test(text)) return false;
   return null;
 }
-function parseCandidateFromMail(raw){
+function parseCandidateFromPage(raw){
   const text=[
     pick(raw,['title','name'],''),
     pick(raw,['bodyText','description','context'],''),
@@ -1095,7 +1092,7 @@ function parseCandidateFromMail(raw){
     addedAt:Date.now()
   };
 }
-function evaluateMailCandidate(c){
+function evaluatePageCandidate(c){
   const reasons=[];
   const trust=$('trustSavedSearch').checked;
   if(!c.url) reasons.push('商品URLなし');
@@ -1124,17 +1121,16 @@ function evaluateMailCandidate(c){
 
 async function testMercariApi(){
   const el=$('mercariApiStatus');
-  el.textContent='Gmail接続を確認中...'; el.className='status loading';
+  el.textContent='URL取得用GASを確認中...'; el.className='status loading';
   try{
-    const r=await callGmailRelay('health');
+    const r=await callMercariRelay('healthManual');
     await sharedAvgPricesPromise;
     const saved=await autoSaveAvgPricesToGas({silent:true});
-    const matched=Number.isFinite(Number(r.matchingThreads))?'・直近の対象スレッド '+Number(r.matchingThreads)+'件':'';
     const projectId=String(r.projectId||'');
     const projectLabel=projectId?'・GAS '+projectId.slice(0,8)+'…':'';
     const previousProjectId=localStorage.getItem('mercariGasProjectId')||'';
     if(projectId) localStorage.setItem('mercariGasProjectId',projectId);
-    el.textContent='接続できました（'+(r.provider||'Gmail通知中継')+'）'+projectLabel+matched+(saved?'・中古平均価格を自動保存しました':'');
+    el.textContent='接続できました（'+(r.provider||'メルカリURL取得中継')+'）'+projectLabel+(saved?'・中古平均価格を自動保存しました':'');
     if(previousProjectId&&projectId&&previousProjectId!==projectId){
       el.textContent+='。前回とは別のGASプロジェクトです';
       el.className='status err';
@@ -1148,20 +1144,6 @@ async function testMercariApi(){
 }
 $('testMercariApiBtn').addEventListener('click',testMercariApi);
 
-async function resetMailHistory(){
-  if(!confirm('GASに保存された処理済みメール・商品IDの履歴をリセットしますか？')) return;
-  const el=$('mercariApiStatus');
-  el.textContent='履歴をリセット中...';el.className='status loading';
-  try{
-    const r=await callGmailRelay('resetProcessed');
-    el.textContent='処理履歴をリセットしました。次の検索で過去メールも再取得できます';
-    el.className='status ok';
-  }catch(e){
-    el.textContent='リセットできません: '+e.message;el.className='status err';
-  }
-}
-$('resetMailHistoryBtn').addEventListener('click',resetMailHistory);
-
 window.addEventListener('load',()=>{
   setTimeout(async()=>{await sharedAvgPricesPromise;await autoSaveAvgPricesToGas();},300);
 });
@@ -1169,37 +1151,41 @@ window.addEventListener('load',()=>{
 async function runBulkSearch(){
   if($('bulkSearchBtn').disabled) return;
   const cfg=getMercariApiSettings();
+  const sourceUrl=$('manualMercariListUrl').value.trim();
+  if(!sourceUrl){
+    $('bulkStatus').textContent='Gmailの「もっと見る」で開いたメルカリURLを入力してください';
+    $('bulkStatus').className='status err'; return;
+  }
+  try{
+    const parsed=new URL(sourceUrl);
+    if(parsed.protocol!=='https:' || !/(^|\.)mercari\.com$/i.test(parsed.hostname)) throw new Error();
+  }catch(e){
+    $('bulkStatus').textContent='https://jp.mercari.com/ で始まるメルカリURLを入力してください';
+    $('bulkStatus').className='status err'; return;
+  }
   if(!cfg.url){
-    $('bulkStatus').textContent='先に「メール取得・選定条件」を開き、GASウェブアプリURLを設定してください';
+    $('bulkStatus').textContent='先に「URL取得・選定条件」を開き、GASウェブアプリURLを設定してください';
     $('bulkStatus').className='status err'; return;
   }
   saveMercariApiSettings();
   $('bulkSearchBtn').disabled=true;
   const status=$('bulkStatus'),progress=$('bulkProgress');
   progress.style.display='block';progress.textContent='';
-  status.textContent='Gmailの新着メルカリ通知を確認しています...';status.className='status loading';
+  status.textContent='入力されたメルカリURLから商品を取得しています...';status.className='status loading';
   const log=msg=>{progress.textContent+=msg+'\n';progress.scrollTop=progress.scrollHeight;};
   try{
-    const result=await callGmailRelay('searchMail',{
-      days:String(Math.max(1,Math.min(30,Number($('mailSearchDays').value||14)))),
-      max_threads:String(Math.max(1,Math.min(100,Number($('mailMaxThreads').value||50)))),
-      max_items:String(Math.max(1,Math.min(100,Number($('mailMaxItems').value||40)))),
-      mark_processed:$('markProcessed').checked?'1':'0'
+    const result=await callMercariRelay('searchListPage',{
+      url:sourceUrl,
+      max_items:String(Math.max(1,Math.min(100,Number($('mailMaxItems').value||40))))
     });
     const items=Array.isArray(result.items)?result.items:[];
-    log(`確認メール: ${result.scannedMessages||0}通`);
-    log(`未処理メール: ${result.unprocessedMessages||0}通`);
-    if(result.skippedProcessed) log(`処理済みのためスキップ: ${result.skippedProcessed}通`);
-    if(result.skippedSeenItems) log(`取得済み商品のためスキップ: ${result.skippedSeenItems}件`);
-    log(`商品一覧リンク検出: ${result.listPagesDetected||0}件`);
-    log(`商品一覧ページ取得: ${result.listPagesFetched||0}件`);
+    log(result.sourceType==='item'?'商品ページを直接取得':'商品一覧ページ取得: 成功');
     log(`一覧から商品検出: ${result.listItemsFound||0}件`);
     log(`処理対象の商品URL: ${result.foundUrls||0}件`);
-    if(result.unparsedMessages) log(`商品一覧または商品URLを抽出できなかったメール: ${result.unparsedMessages}通`);
     let added=0,rejected=0;
     items.forEach(raw=>{
-      const c=parseCandidateFromMail(raw);
-      const check=evaluateMailCandidate(c);
+      const c=parseCandidateFromPage(raw);
+      const check=evaluatePageCandidate(c);
       const label=(c.model||'?')+' '+(c.storage||'?')+' '+(c.price?yen(c.price):'価格不明');
       if(!check.accepted){
         rejected++;
@@ -1212,13 +1198,11 @@ async function runBulkSearch(){
       log('✓ '+label+(c.discountRate===null?' / 相場比較不能':' / '+c.discountRate.toFixed(1)+'%安'));
     });
     saveCandidates();renderCandidates();
-    status.textContent=`メール検索完了。候補追加 ${added}件／除外 ${rejected}件`;
+    status.textContent=`URL取得完了。候補追加 ${added}件／除外 ${rejected}件`;
     if(!items.length){
-      if(!(result.scannedMessages||0)) status.textContent+='。指定期間内にメルカリ通知を確認できませんでした';
-      else if((result.unprocessedMessages||0)===0) status.textContent+='。対象メールはすべて処理済みです。必要なら「メール処理履歴をリセット」を押してください';
-      else status.textContent+='。新着メールは確認しましたが、商品URLまたは商品情報を取得できませんでした';
+      status.textContent+='。入力URLから商品情報を取得できませんでした';
     }
-    if(result.remainingDueToLimit) status.textContent+='。上限に達したため、もう一度押すと残りを確認できます';
+    if(result.remainingDueToLimit) status.textContent+='。取得上限に達しています。必要なら最大商品数を増やしてください';
     status.className='status ok';
     const eligibleCandidates=candidates.filter(c=>!$('excludeAboveAvg').checked||!c.avgPrice||!c.price||c.price<=c.avgPrice);
     if(eligibleCandidates.length){
@@ -1229,7 +1213,7 @@ async function runBulkSearch(){
       result.warnings.slice(0,8).forEach(w=>log('! '+w));
     }
   }catch(e){
-    status.textContent='メール検索に失敗しました: '+e.message;
+    status.textContent='URLからの商品取得に失敗しました: '+e.message;
     status.className='status err';
     log('! '+e.message);
   }finally{
@@ -1240,7 +1224,7 @@ async function runBulkSearch(){
 function renderCandidates(){
   const list=$('candidateList');
   const visibleCandidates=candidates.filter(c=>!$('excludeAboveAvg').checked||!c.avgPrice||!c.price||c.price<=c.avgPrice);
-  if(!visibleCandidates.length){ list.innerHTML='<div class="emptyBox">表示できる候補はありません。<br>上の「新着通知メールを検索・おすすめ決定」を押してください。</div>'; return; }
+  if(!visibleCandidates.length){ list.innerHTML='<div class="emptyBox">表示できる候補はありません。<br>上のURLを入力して「このURLから商品を取得・おすすめ決定」を押してください。</div>'; return; }
   const ranked=[...visibleCandidates].map(c=>({...c,_score:candidateScore(c)})).sort((a,b)=>b._score-a._score);
   list.innerHTML=ranked.map((c,i)=>{
     const risk=(c.riskFlags||[]).length ? `<span class="badge bad">注意: ${esc(c.riskFlags.join('・'))}</span>` : (i===0?'<span class="badge">今回のおすすめ</span>':'');
