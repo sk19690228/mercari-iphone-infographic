@@ -1,16 +1,15 @@
 /**
- * Mercari Gmail notification relay for Google Apps Script.
+ * Mercari page fetch relay for Google Apps Script.
  *
  * Script properties:
- *   APP_TOKEN  required: same value as the PWA relay token
- *   MAIL_QUERY optional: custom Gmail search expression
+ *   APP_TOKEN required: same value as the PWA relay token
+ *
+ * This version does not access Gmail. It only fetches a Mercari URL that the
+ * user pastes into the PWA and returns the products found on that page.
  */
 
-var PROCESSED_MESSAGE_IDS_KEY = 'PROCESSED_MESSAGE_IDS_V35';
-var SEEN_ITEM_IDS_KEY = 'SEEN_ITEM_IDS_V35';
 var AVG_PRICES_KEY = 'AVG_PRICES_V1';
-var CODE_VERSION = '36';
-var DEFAULT_MAIL_QUERY = '{from:mercari.jp from:mercari.com subject:メルカリ "メルカリ"}';
+var CODE_VERSION = '38';
 var USER_AGENT = 'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36';
 
 function doGet(e) {
@@ -18,11 +17,10 @@ function doGet(e) {
   var callback = safeCallback_(p.callback);
   try {
     verifyToken_(p.token || '');
-    var action = String(p.action || 'health');
+    var action = String(p.action || 'healthManual');
     var result;
-    if (action === 'health') result = health_();
-    else if (action === 'searchMail') result = searchMail_(p);
-    else if (action === 'resetProcessed') result = resetProcessed_();
+    if (action === 'healthManual') result = healthManual_();
+    else if (action === 'searchListPage') result = searchListPage_(p);
     else if (action === 'getAppConfig') result = getAppConfig_();
     else if (action === 'saveAvgPrices') result = saveAvgPrices_(p.data);
     else if (action === 'fetchItem') result = fetchItem_(p.url);
@@ -35,24 +33,12 @@ function doGet(e) {
   }
 }
 
-function authorizeGmail() {
+function healthManual_() {
   return {
-    unreadCount: GmailApp.getInboxUnreadCount(),
-    checkedAt: new Date().toISOString()
-  };
-}
-
-function health_() {
-  var props = PropertiesService.getScriptProperties();
-  var custom = String(props.getProperty('MAIL_QUERY') || '').trim();
-  var query = buildMailQuery_(3, custom);
-  var threads = GmailApp.search(query, 0, 10);
-  return {
-    provider: 'Gmail通知中継 v' + CODE_VERSION,
+    provider: 'メルカリURL取得中継 v' + CODE_VERSION,
     projectId: ScriptApp.getScriptId(),
-    matchingThreads: threads.length,
-    checkedAt: new Date().toISOString(),
-    customQuery: !!custom
+    gmailAccess: false,
+    checkedAt: new Date().toISOString()
   };
 }
 
@@ -76,144 +62,58 @@ function output_(data, callback) {
   return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
 }
 
-function buildMailQuery_(days, customQuery) {
-  var base = String(customQuery || '').trim() || DEFAULT_MAIL_QUERY;
-  return 'newer_than:' + clamp_(days, 1, 30, 14) + 'd -in:spam -in:trash ' + base;
-}
-
-function searchMail_(p) {
+function searchListPage_(p) {
   var started = Date.now();
-  var days = clamp_(p.days, 1, 30, 14);
-  var maxThreads = clamp_(p.max_threads, 1, 100, 50);
   var maxItems = clamp_(p.max_items, 1, 100, 40);
-  var markProcessed = String(p.mark_processed || '1') === '1';
-  var props = PropertiesService.getScriptProperties();
-  var query = buildMailQuery_(days, props.getProperty('MAIL_QUERY'));
-  var threads = GmailApp.search(query, 0, maxThreads);
-  var messages = [];
-  threads.forEach(function(thread) {
-    thread.getMessages().forEach(function(message) { messages.push(message); });
-  });
-  messages.sort(function(a, b) { return b.getDate().getTime() - a.getDate().getTime(); });
-
-  var processed = readIdMap_(props, PROCESSED_MESSAGE_IDS_KEY);
-  var seen = readIdMap_(props, SEEN_ITEM_IDS_KEY);
-  var skippedProcessed = 0;
-  var skippedSeenItems = 0;
-  var unparsedMessages = 0;
-  var unprocessedMessages = 0;
-  var messageRecords = [];
+  var sourceUrl = validateManualMercariUrl_(p.url);
   var directItemUrls = [];
-  var listPageUrls = [];
-  var contextByUrl = {};
   var warnings = [];
-
-  messages.forEach(function(message) {
-    var id = String(message.getId());
-    if (processed[id]) { skippedProcessed++; return; }
-    unprocessedMessages++;
-    var subject = safeCall_(function() { return message.getSubject(); }, '');
-    var plain = safeCall_(function() { return message.getPlainBody(); }, '');
-    var html = safeCall_(function() { return message.getBody(); }, '');
-    var record = {
-      id: id,
-      message: message,
-      subject: String(subject || ''),
-      plain: String(plain || ''),
-      html: String(html || ''),
-      date: message.getDate(),
-      detected: false
-    };
-    var extracted = extractMercariLinks_(record.html + '\n' + record.plain);
-    extracted.items.forEach(function(url) {
-      directItemUrls.push(url);
-      if (!contextByUrl[url]) contextByUrl[url] = record;
-      record.detected = true;
-    });
-    extracted.lists.forEach(function(url) {
-      listPageUrls.push(url);
-      if (!contextByUrl[url]) contextByUrl[url] = record;
-      record.detected = true;
-    });
-    if (!record.detected) unparsedMessages++;
-    messageRecords.push(record);
-  });
-
-  directItemUrls = unique_(directItemUrls);
-  listPageUrls = unique_(listPageUrls).slice(0, 10);
-  var listPagesFetched = 0;
-  var listItemsFound = 0;
-  if (listPageUrls.length) {
-    var listResponses = fetchAllSafe_(listPageUrls);
-    listResponses.forEach(function(entry, index) {
-      if (!entry.ok) {
-        warnings.push('商品一覧ページを取得できませんでした: ' + shortUrl_(listPageUrls[index]));
-        return;
-      }
-      listPagesFetched++;
-      var links = extractMercariLinks_(entry.text).items;
-      listItemsFound += links.length;
-      links.forEach(function(url) {
-        directItemUrls.push(url);
-        if (!contextByUrl[url]) contextByUrl[url] = contextByUrl[listPageUrls[index]] || null;
-      });
-    });
+  var listPageFetched = false;
+  var directMatch = sourceUrl.match(/^https:\/\/(?:jp\.)?mercari\.com\/(?:item|shops\/product)\/[A-Za-z0-9_-]+/i);
+  if (directMatch) {
+    directItemUrls.push(normalizeMercariUrl_(directMatch[0]));
+  } else {
+    var page = fetchAllSafe_([sourceUrl])[0];
+    if (!page || !page.ok) throw new Error('入力されたメルカリページを取得できませんでした');
+    listPageFetched = true;
+    directItemUrls = extractMercariLinks_(page.text).items;
   }
-
   directItemUrls = unique_(directItemUrls);
-  var freshUrls = [];
-  directItemUrls.forEach(function(url) {
-    var itemId = itemIdFromUrl_(url);
-    if (itemId && seen[itemId]) { skippedSeenItems++; return; }
-    if (freshUrls.length < maxItems) freshUrls.push(url);
-  });
-
-  var responses = fetchAllSafe_(freshUrls);
+  if (!directItemUrls.length) throw new Error('入力URLのページから商品リンクを検出できませんでした');
+  var targetUrls = directItemUrls.slice(0, maxItems);
+  var responses = fetchAllSafe_(targetUrls);
   var items = [];
-  var successfullyHandledMessageIds = {};
   responses.forEach(function(entry, index) {
-    var url = freshUrls[index];
-    var context = contextByUrl[url] || null;
-    var item = entry.ok ? parseMercariItem_(entry.text, url, context) : parseMailFallback_(url, context);
-    if (!entry.ok) warnings.push('商品ページを取得できないためメール本文を使用: ' + shortUrl_(url));
+    var url = targetUrls[index];
+    if (!entry.ok) {
+      warnings.push('商品ページを取得できませんでした: ' + shortUrl_(url));
+      return;
+    }
+    var item = parseMercariItem_(entry.text, url, null);
     if (!item || !item.url) return;
     items.push(item);
-    var usable = !!(item.price || item.model || item.storage || (item.title && item.title !== 'メルカリ新着商品'));
-    if (usable) {
-      var itemId = itemIdFromUrl_(item.url);
-      if (itemId) seen[itemId] = Date.now();
-      if (context && context.id) successfullyHandledMessageIds[context.id] = true;
-    }
   });
-
-  if (markProcessed) {
-    var label = GmailApp.getUserLabelByName('iPhoneインフォ/処理済み') || GmailApp.createLabel('iPhoneインフォ/処理済み');
-    messageRecords.forEach(function(record) {
-      if (record.detected && successfullyHandledMessageIds[record.id]) {
-        processed[record.id] = Date.now();
-        safeCall_(function() { record.message.getThread().addLabel(label); }, null);
-      }
-    });
-  }
-  trimAndWriteIdMap_(props, PROCESSED_MESSAGE_IDS_KEY, processed, 800);
-  trimAndWriteIdMap_(props, SEEN_ITEM_IDS_KEY, seen, 1600);
-
   return {
     items: items,
-    scannedMessages: messages.length,
-    unprocessedMessages: unprocessedMessages,
-    skippedProcessed: skippedProcessed,
-    skippedSeenItems: skippedSeenItems,
-    unparsedMessages: unparsedMessages,
-    listPagesDetected: listPageUrls.length,
-    listPagesFetched: listPagesFetched,
-    listItemsFound: listItemsFound,
-    foundUrls: freshUrls.length,
-    remainingDueToLimit: directItemUrls.length - skippedSeenItems > maxItems,
+    sourceUrl: sourceUrl,
+    sourceType: directMatch ? 'item' : 'list',
+    listPageFetched: listPageFetched,
+    listItemsFound: directItemUrls.length,
+    foundUrls: targetUrls.length,
+    remainingDueToLimit: directItemUrls.length > maxItems,
     warnings: unique_(warnings).slice(0, 12),
     elapsedMs: Date.now() - started,
     checkedAt: new Date().toISOString()
   };
+}
+
+function validateManualMercariUrl_(value) {
+  var url = String(value || '').trim();
+  if (!url || url.length > 3000) throw new Error('メルカリURLを確認してください');
+  if (!/^https:\/\/(?:[A-Za-z0-9-]+\.)*mercari\.com(?:\/|$)/i.test(url)) {
+    throw new Error('https://jp.mercari.com/ で始まるURLを入力してください');
+  }
+  return cleanUrl_(url);
 }
 
 function fetchAllSafe_(urls) {
@@ -563,35 +463,6 @@ function getAppConfig_() {
   return {avgPrices:avgPrices};
 }
 
-function resetProcessed_() {
-  var props = PropertiesService.getScriptProperties();
-  var lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
-    // APP_TOKEN、MAIL_QUERY、中古平均価格には触れず、履歴2項目だけを空にします。
-    props.setProperty(PROCESSED_MESSAGE_IDS_KEY, '{}');
-    props.setProperty(SEEN_ITEM_IDS_KEY, '{}');
-  } finally {
-    lock.releaseLock();
-  }
-  return {reset:true, note:'処理済みメール・商品IDの履歴だけを空にしました。APP_TOKEN・検索条件・中古平均価格は保持しています。'};
-}
-
-function readIdMap_(props, key) {
-  try {
-    var parsed = JSON.parse(props.getProperty(key) || '{}');
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch (err) { return {}; }
-}
-
-function trimAndWriteIdMap_(props, key, map, limit) {
-  var entries = Object.keys(map).map(function(id) { return [id, Number(map[id]) || 0]; });
-  entries.sort(function(a, b) { return b[1] - a[1]; });
-  var trimmed = {};
-  entries.slice(0, limit).forEach(function(entry) { trimmed[entry[0]] = entry[1]; });
-  props.setProperty(key, JSON.stringify(trimmed));
-}
-
 function unique_(items) {
   var seen = {};
   return (items || []).filter(function(item) {
@@ -611,10 +482,6 @@ function clamp_(value, min, max, fallback) {
   var number = Number(value);
   if (!isFinite(number)) number = fallback;
   return Math.max(min, Math.min(max, Math.round(number)));
-}
-
-function safeCall_(fn, fallback) {
-  try { return fn(); } catch (err) { return fallback; }
 }
 
 function escapeRegExp_(value) {
