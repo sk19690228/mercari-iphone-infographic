@@ -965,12 +965,37 @@ $('mercariApiToken').value=localStorage.getItem('mercariApiToken')||'';
   await sharedAvgPricesPromise;scheduleAvgPriceAutoSave();
 }));
 
-function callGmailRelay(action,params={}){
-  const cfg=getMercariApiSettings();
-  if(!cfg.url) return Promise.reject(new Error('GASウェブアプリURLを設定してください'));
+function gmailRelayTimeout(action){
+  return action==='searchMail'?240000:(action==='fetchItem'?120000:60000);
+}
+function validateGmailRelaySettings(cfg){
+  if(!cfg.url) throw new Error('この端末にGASウェブアプリURLを設定してください');
+  if(!cfg.token) throw new Error('この端末に中継用トークンを設定してください');
+  let parsed;
+  try{ parsed=new URL(cfg.url); }catch(e){ throw new Error('GASウェブアプリURLの形式が正しくありません'); }
+  if(parsed.protocol!=='https:' || parsed.hostname!=='script.google.com' || !/\/macros\/s\/[^/]+\/exec$/.test(parsed.pathname)){
+    throw new Error('GASウェブアプリの /exec URLを設定してください');
+  }
+}
+async function callGmailRelayFetch(action,params,cfg){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),gmailRelayTimeout(action));
+  const qs=new URLSearchParams({action,token:cfg.token,client_version:'37',_ts:String(Date.now()),...params});
+  try{
+    const response=await fetch(cfg.url+'?'+qs.toString(),{
+      method:'GET',mode:'cors',cache:'no-store',credentials:'omit',redirect:'follow',
+      referrerPolicy:'no-referrer',signal:controller.signal
+    });
+    if(!response.ok) throw new Error('GASのHTTPエラー: '+response.status);
+    const data=await response.json();
+    if(!data || data.ok===false) throw new Error(data?.error||'GASからエラーが返されました');
+    return data;
+  }finally{ clearTimeout(timer); }
+}
+function callGmailRelayJsonp(action,params,cfg){
   return new Promise((resolve,reject)=>{
     const callback='__gmailRelay_'+Date.now()+'_'+Math.random().toString(36).slice(2);
-    const qs=new URLSearchParams({action,token:cfg.token,callback,client_version:'35',_ts:String(Date.now()),...params});
+    const qs=new URLSearchParams({action,token:cfg.token,callback,client_version:'37',_ts:String(Date.now()),...params});
     const script=document.createElement('script');
     script.async=true;
     script.referrerPolicy='no-referrer';
@@ -984,12 +1009,23 @@ function callGmailRelay(action,params={}){
       if(!data || data.ok===false) reject(new Error(data?.error||'GASからエラーが返されました'));
       else resolve(data);
     };
-    script.onerror=()=>{cleanup();reject(new Error('GASへ接続できませんでした。デプロイURLと公開設定を確認してください'));};
-    const timeoutMs=action==='searchMail'?240000:(action==='fetchItem'?120000:60000);
-    const timer=setTimeout(()=>{cleanup();reject(new Error('GASがタイムアウトしました。Code.gsを最新版へ更新し、新バージョンで再デプロイしてください'));},timeoutMs);
+    script.onerror=()=>{cleanup();reject(new Error('スマホブラウザがGAS通信を遮断しました。GAS URL・この端末のトークン・ブラウザのコンテンツブロックを確認してください'));};
+    const timer=setTimeout(()=>{cleanup();reject(new Error('GASがタイムアウトしました。Code.gsを最新版へ更新し、新バージョンで再デプロイしてください'));},gmailRelayTimeout(action));
     script.src=cfg.url+'?'+qs.toString();
     document.head.appendChild(script);
   });
+}
+async function callGmailRelay(action,params={}){
+  const cfg=getMercariApiSettings();
+  validateGmailRelaySettings(cfg);
+  try{
+    return await callGmailRelayFetch(action,params,cfg);
+  }catch(fetchError){
+    if(fetchError?.name==='AbortError') throw new Error('GASがタイムアウトしました。通信環境を確認して再実行してください');
+    if(!/Failed to fetch|Load failed|NetworkError|fetch resource|HTTPエラー|JSON/i.test(String(fetchError?.message||fetchError))) throw fetchError;
+    try{ return await callGmailRelayJsonp(action,params,cfg); }
+    catch(jsonpError){ throw new Error(jsonpError.message+'（標準通信: '+fetchError.message+'）'); }
+  }
 }
 
 async function loadAppConfigFromGas({silent=false}={}){
