@@ -970,8 +970,10 @@ function callGmailRelay(action,params={}){
   if(!cfg.url) return Promise.reject(new Error('GASウェブアプリURLを設定してください'));
   return new Promise((resolve,reject)=>{
     const callback='__gmailRelay_'+Date.now()+'_'+Math.random().toString(36).slice(2);
-    const qs=new URLSearchParams({action,token:cfg.token,callback,...params});
+    const qs=new URLSearchParams({action,token:cfg.token,callback,client_version:'35',_ts:String(Date.now()),...params});
     const script=document.createElement('script');
+    script.async=true;
+    script.referrerPolicy='no-referrer';
     const cleanup=()=>{
       clearTimeout(timer);
       delete window[callback];
@@ -983,7 +985,8 @@ function callGmailRelay(action,params={}){
       else resolve(data);
     };
     script.onerror=()=>{cleanup();reject(new Error('GASへ接続できませんでした。デプロイURLと公開設定を確認してください'));};
-    const timer=setTimeout(()=>{cleanup();reject(new Error('GASがタイムアウトしました'));},90000);
+    const timeoutMs=action==='searchMail'?240000:(action==='fetchItem'?120000:60000);
+    const timer=setTimeout(()=>{cleanup();reject(new Error('GASがタイムアウトしました。Code.gsを最新版へ更新し、新バージョンで再デプロイしてください'));},timeoutMs);
     script.src=cfg.url+'?'+qs.toString();
     document.head.appendChild(script);
   });
@@ -1090,7 +1093,17 @@ async function testMercariApi(){
     const r=await callGmailRelay('health');
     await sharedAvgPricesPromise;
     const saved=await autoSaveAvgPricesToGas({silent:true});
-    el.textContent='接続できました（'+(r.provider||'Gmail通知中継')+'）'+(saved?'・中古平均価格を自動保存しました':'');
+    const matched=Number.isFinite(Number(r.matchingThreads))?'・直近の対象スレッド '+Number(r.matchingThreads)+'件':'';
+    const projectId=String(r.projectId||'');
+    const projectLabel=projectId?'・GAS '+projectId.slice(0,8)+'…':'';
+    const previousProjectId=localStorage.getItem('mercariGasProjectId')||'';
+    if(projectId) localStorage.setItem('mercariGasProjectId',projectId);
+    el.textContent='接続できました（'+(r.provider||'Gmail通知中継')+'）'+projectLabel+matched+(saved?'・中古平均価格を自動保存しました':'');
+    if(previousProjectId&&projectId&&previousProjectId!==projectId){
+      el.textContent+='。前回とは別のGASプロジェクトです';
+      el.className='status err';
+      return;
+    }
     el.className='status ok';
   }catch(e){
     el.textContent='接続できません: '+e.message;
@@ -1128,7 +1141,7 @@ async function runBulkSearch(){
   $('bulkSearchBtn').disabled=true;
   const status=$('bulkStatus'),progress=$('bulkProgress');
   progress.style.display='block';progress.textContent='';
-  status.textContent='Gmail通知の「すべて見る」から商品一覧を取得しています...';status.className='status loading';
+  status.textContent='Gmailの新着メルカリ通知を確認しています...';status.className='status loading';
   const log=msg=>{progress.textContent+=msg+'\n';progress.scrollTop=progress.scrollHeight;};
   try{
     const result=await callGmailRelay('searchMail',{
@@ -1139,6 +1152,9 @@ async function runBulkSearch(){
     });
     const items=Array.isArray(result.items)?result.items:[];
     log(`確認メール: ${result.scannedMessages||0}通`);
+    log(`未処理メール: ${result.unprocessedMessages||0}通`);
+    if(result.skippedProcessed) log(`処理済みのためスキップ: ${result.skippedProcessed}通`);
+    if(result.skippedSeenItems) log(`取得済み商品のためスキップ: ${result.skippedSeenItems}件`);
     log(`商品一覧リンク検出: ${result.listPagesDetected||0}件`);
     log(`商品一覧ページ取得: ${result.listPagesFetched||0}件`);
     log(`一覧から商品検出: ${result.listItemsFound||0}件`);
@@ -1161,6 +1177,11 @@ async function runBulkSearch(){
     });
     saveCandidates();renderCandidates();
     status.textContent=`メール検索完了。候補追加 ${added}件／除外 ${rejected}件`;
+    if(!items.length){
+      if(!(result.scannedMessages||0)) status.textContent+='。指定期間内にメルカリ通知を確認できませんでした';
+      else if((result.unprocessedMessages||0)===0) status.textContent+='。対象メールはすべて処理済みです。必要なら「メール処理履歴をリセット」を押してください';
+      else status.textContent+='。新着メールは確認しましたが、商品URLまたは商品情報を取得できませんでした';
+    }
     if(result.remainingDueToLimit) status.textContent+='。上限に達したため、もう一度押すと残りを確認できます';
     status.className='status ok';
     const eligibleCandidates=candidates.filter(c=>!$('excludeAboveAvg').checked||!c.avgPrice||!c.price||c.price<=c.avgPrice);
