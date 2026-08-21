@@ -975,7 +975,7 @@ function validateMercariRelaySettings(cfg){
 async function callMercariRelayFetch(action,params,cfg){
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),mercariRelayTimeout(action));
-  const qs=new URLSearchParams({action,token:cfg.token,client_version:'40',_ts:String(Date.now()),...params});
+  const qs=new URLSearchParams({action,token:cfg.token,client_version:'41',_ts:String(Date.now()),...params});
   try{
     const response=await fetch(cfg.url+'?'+qs.toString(),{
       method:'GET',mode:'cors',cache:'no-store',credentials:'omit',redirect:'follow',
@@ -990,7 +990,7 @@ async function callMercariRelayFetch(action,params,cfg){
 function callMercariRelayJsonp(action,params,cfg){
   return new Promise((resolve,reject)=>{
     const callback='__mercariRelay_'+Date.now()+'_'+Math.random().toString(36).slice(2);
-    const qs=new URLSearchParams({action,token:cfg.token,callback,client_version:'40',_ts:String(Date.now()),...params});
+    const qs=new URLSearchParams({action,token:cfg.token,callback,client_version:'41',_ts:String(Date.now()),...params});
     const script=document.createElement('script');
     script.async=true;
     script.referrerPolicy='no-referrer';
