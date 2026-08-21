@@ -9,7 +9,7 @@
  */
 
 var AVG_PRICES_KEY = 'AVG_PRICES_V1';
-var CODE_VERSION = '40';
+var CODE_VERSION = '41';
 var USER_AGENT = 'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36';
 var LIST_PAGE_USER_AGENTS = [
   'Googlebot/2.1 (+http://www.google.com/bot.html)',
@@ -138,7 +138,48 @@ function fetchListPageLinks_(url) {
       };
     }
   }
+
+  // UrlFetchApp requests can receive Mercari's JavaScript-only page even when
+  // a crawler User-Agent is requested. In that case, use Jina Reader only as
+  // a fallback and wait until Mercari's item cells have been rendered.
+  var readerResult = fetchListPageViaReader_(url);
+  if (readerResult.pageFetched) pageFetched = true;
+  if (readerResult.links.length) {
+    return {
+      pageFetched:true,
+      links:readerResult.links,
+      warning:'商品一覧の取得方式を動的ページ対応へ自動で切り替えました'
+    };
+  }
   return {pageFetched:pageFetched, links:[], warning:''};
+}
+
+function fetchListPageViaReader_(url) {
+  for (var attempt = 0; attempt < 2; attempt++) {
+    var separator = url.indexOf('?') >= 0 ? '&' : '?';
+    var refresh = Date.now() + '-' + attempt;
+    var target = url + separator + 'app_refresh=' + encodeURIComponent(refresh);
+    var readerUrl = 'https://r.jina.ai/https://' + target.replace(/^https?:\/\//i, '');
+    try {
+      var response = UrlFetchApp.fetch(readerUrl, {
+        method:'get',
+        escaping:false,
+        followRedirects:true,
+        muteHttpExceptions:true,
+        headers:{
+          'Accept':'text/plain',
+          'X-Wait-For-Selector':'[data-testid="item-cell"]',
+          'X-Target-Selector':'[data-testid="item-cell"]',
+          'X-Timeout':'30'
+        }
+      });
+      var code = response.getResponseCode();
+      if (code < 200 || code >= 400) continue;
+      var links = extractMercariLinks_(response.getContentText('UTF-8')).items;
+      if (links.length) return {pageFetched:true, links:links};
+    } catch (err) {}
+  }
+  return {pageFetched:false, links:[]};
 }
 
 function validateManualMercariUrl_(value) {
@@ -200,10 +241,19 @@ function extractMercariLinks_(source) {
   var decoded = decodeUrlDeep_(text);
   while ((match = urlPattern.exec(decoded)) !== null) candidates.push(cleanUrl_(match[0]));
 
+  // Current Mercari responses can contain item IDs in embedded JSON without
+  // exposing a conventional href. Convert those IDs into canonical URLs.
+  var rawIdPattern = /(?:^|[^A-Za-z0-9])(m\d{8,})(?=[^A-Za-z0-9]|$)/gi;
+  while ((match = rawIdPattern.exec(text)) !== null) candidates.push('https://jp.mercari.com/item/' + match[1]);
+  rawIdPattern.lastIndex = 0;
+  while ((match = rawIdPattern.exec(decoded)) !== null) candidates.push('https://jp.mercari.com/item/' + match[1]);
+
   var items = [];
   var lists = [];
   candidates.forEach(function(candidate) {
     var expanded = decodeUrlDeep_(candidate);
+    var relativeItemMatch = expanded.match(/^\/(?:item\/[A-Za-z0-9_-]+|shops\/product\/[A-Za-z0-9_-]+)/i);
+    if (relativeItemMatch) { items.push(normalizeMercariUrl_('https://jp.mercari.com' + relativeItemMatch[0])); return; }
     var itemMatch = expanded.match(/https?:\/\/(?:jp\.)?mercari\.com\/(?:item|shops\/product)\/[A-Za-z0-9_-]+/i);
     if (itemMatch) { items.push(normalizeMercariUrl_(itemMatch[0])); return; }
     var idMatch = expanded.match(/(?:^|[^A-Za-z0-9])(m\d{8,})(?:[^A-Za-z0-9]|$)/i);
